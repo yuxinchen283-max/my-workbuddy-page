@@ -1,0 +1,2323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no" />
+<title>涂鸦特工 - 街道版 v3</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#15171c;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#fff}
+#app{position:fixed;inset:0;overflow:hidden;background:radial-gradient(circle at 50% 25%,#343842 0%,#1d2129 48%,#111319 100%)}
+#cameraVideo{position:absolute;left:14px;bottom:70px;width:240px;height:180px;object-fit:cover;transform:scaleX(-1);opacity:.82;filter:contrast(1.08);display:none;z-index:8;border-radius:16px;border:2px solid rgba(255,255,255,.35);box-shadow:0 12px 36px rgba(0,0,0,.35);background:#111;pointer-events:none}
+#skeletonCanvas{position:absolute;left:14px;bottom:70px;width:240px;height:180px;display:none;z-index:9;border-radius:16px;pointer-events:none}
+#threeLayer{position:absolute;inset:0;z-index:1;filter:brightness(.7) saturate(.9)}
+#ui{position:absolute;left:14px;top:12px;z-index:5;max-width:460px;padding:12px 14px;border-radius:16px;background:rgba(14,17,23,.72);box-shadow:0 10px 30px rgba(0,0,0,.25);backdrop-filter:blur(8px);font-size:14px;line-height:1.55;user-select:none}
+#ui strong{color:#fff176}.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0}.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.14)}
+.color-dot{width:14px;height:14px;border-radius:999px;background:#bbb;box-shadow:0 0 10px currentColor;display:inline-block;vertical-align:-2px}
+#progressWrap{width:150px;height:10px;border-radius:999px;overflow:hidden;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.18)}
+#progressBar{width:0;height:100%;background:linear-gradient(90deg,#ff5252,#ffeb3b,#00e5ff);transition:width .08s linear}
+#controls{position:absolute;right:14px;top:12px;z-index:6;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;max-width:390px}
+button{appearance:none;border:0;border-radius:999px;padding:9px 13px;color:white;background:rgba(43,48,60,.82);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),0 6px 18px rgba(0,0,0,.25);cursor:pointer;font-weight:700}
+button:hover{background:rgba(65,72,88,.92)}
+#centerMessage{position:absolute;left:50%;top:19%;transform:translateX(-50%);z-index:7;padding:12px 18px;border-radius:999px;background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.18);font-size:22px;font-weight:900;letter-spacing:1px;text-shadow:0 2px 10px rgba(0,0,0,.55);pointer-events:none;opacity:1;transition:opacity .25s;white-space:nowrap}
+#fallbackCanvas{position:absolute;inset:0;z-index:2;display:none;background:#171b22}
+#errorBox{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:20;max-width:620px;padding:22px 26px;border-radius:18px;background:rgba(0,0,0,.78);display:none;line-height:1.7}
+#debugPanel{position:absolute;right:14px;bottom:18px;z-index:20;padding:10px 14px;border-radius:12px;background:rgba(0,0,0,.85);border:1px solid rgba(255,255,255,.2);font-size:12px;color:#aaa;max-width:260px;display:block}
+#hintBottom{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:5;padding:10px 16px;border-radius:999px;background:rgba(0,0,0,.5);font-weight:800;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.22);user-select:none;font-size:13px}
+#hiddenCanvas{display:none}
+#miniMap{position:absolute;right:14px;top:62px;z-index:5;width:240px;height:300px;border-radius:18px;background:rgba(8,12,18,.72);border:1px solid rgba(255,255,255,.18);box-shadow:0 12px 36px rgba(0,0,0,.32);backdrop-filter:blur(8px)}
+#mapTitle{position:absolute;right:32px;top:74px;z-index:6;font-size:13px;font-weight:900;color:#fff176;pointer-events:none}
+#scoreBoard{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:5;padding:8px 20px;border-radius:999px;background:rgba(14,17,23,.72);border:1px solid rgba(255,255,255,.14);font-size:18px;font-weight:900;color:#fff176;display:flex;gap:16px;align-items:center}
+@media(max-width:720px){#ui{font-size:12px;max-width:calc(100vw - 28px)}#controls{top:auto;bottom:68px;right:10px}#centerMessage{font-size:17px;top:24%}#hintBottom{width:calc(100vw - 36px);font-size:12px}#miniMap{width:160px;height:220px;top:120px}#mapTitle{top:130px;right:26px}#cameraVideo,#skeletonCanvas{width:170px;height:128px}}
+</style>
+<script>
+// 加载 MediaPipe Pose 用于骨骼检测
+window.__MEDIAPIPE_LOADING__ = false;
+window.__MEDIAPIPE_LOADED__ = false;
+
+// 加载 MediaPipe 依赖（使用更可靠的顺序）
+(function loadMediaPipe() {
+  console.log('[MediaPipe] 开始加载...');
+  window.__MEDIAPIPE_LOADING__ = true;
+  
+  // MediaPipe 依赖加载器
+  function loadScript(src, callback) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.crossOrigin = 'anonymous';
+      s.onload = () => {
+        console.log('[MediaPipe] ✓', src.split('/').pop());
+        resolve();
+      };
+      s.onerror = (e) => {
+        console.error('[MediaPipe] ✗', src.split('/').pop(), e);
+        reject(new Error('加载失败: ' + src));
+      };
+      document.head.appendChild(s);
+    });
+  }
+  
+  // 按顺序加载（关键是 pose 要最后加载）
+  const scripts = [
+    'https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js'
+  ];
+  
+  // 先加载 pose（它会加载所有依赖）
+  loadScript(scripts[0])
+    .then(() => {
+      // 等待一下让依赖完成
+      setTimeout(() => {
+        if (window.Pose) {
+          window.__MEDIAPIPE_LOADED__ = true;
+          window.__MEDIAPIPE_LOADING__ = false;
+          console.log('[MediaPipe] 加载完成! Pose:', !!window.Pose);
+          if (window.__MEDIAPIPE_READY_CBS__) {
+            window.__MEDIAPIPE_READY_CBS__.forEach(cb => cb());
+          }
+        } else {
+          console.warn('[MediaPipe] Pose 类未定义');
+        }
+      }, 500);
+    })
+    .catch(e => {
+      console.error('[MediaPipe] 加载失败:', e);
+      window.__MEDIAPIPE_LOADING__ = false;
+    });
+  
+  // 超时检测
+  setTimeout(() => {
+    if (!window.__MEDIAPIPE_LOADED__) {
+      console.warn('[MediaPipe] 加载超时 (10s)');
+    }
+  }, 10000);
+})();
+
+// 等待 MediaPipe 加载的辅助函数
+window.__MEDIAPIPE_READY_CBS__ = [];
+window.__mediapipeReady = function(callback) {
+  if (window.__MEDIAPIPE_LOADED__ && window.Pose) {
+    callback();
+  } else {
+    window.__MEDIAPIPE_READY_CBS__.push(callback);
+  }
+};
+</script>
+<script>
+window.__THREE_LOAD_FAILED__ = false;
+window.__THREE_LOADING_DONE__ = false;
+const __THREE_CDN__ = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+(function () {
+  var s = document.createElement('script');
+  s.src = __THREE_CDN__;
+  s.crossOrigin = 'anonymous';
+  s.onerror = function () {
+    // fallback: try unpkg
+    console.log('[Load] CDN 失败，尝试 unpkg...');
+    s.src = 'https://unpkg.com/three@0.149.0/build/three.min.js';
+    s.onerror = function () {
+      // final fallback: try jsdelivr
+      console.log('[Load] unpkg 失败，尝试 jsdelivr...');
+      s.src = 'https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js';
+      s.onerror = function () {
+        console.error('[Load] 所有 CDN 都失败了');
+        window.__THREE_LOAD_FAILED__ = true;
+        window.__THREE_LOADING_DONE__ = true;
+      };
+    };
+  };
+  s.onload = function () {
+    // Three.js loaded successfully
+    console.log('[Load] Three.js 加载成功!');
+    window.__THREE_LOADING_DONE__ = true;
+  };
+  document.head.appendChild(s);
+  // 超时兜底：如果5秒后THREE仍未加载成功，标记失败
+  setTimeout(function () {
+    if (!window.THREE) {
+      window.__THREE_LOAD_FAILED__ = true;
+      window.__THREE_LOADING_DONE__ = true;
+    }
+  }, 5000);
+})();
+window.__THREE_LOADING_PROMISE__ = new Promise(function (r) {
+  function wait() {
+    if (window.__THREE_LOADING_DONE__) r(!window.__THREE_LOAD_FAILED__);
+    else setTimeout(wait, 100);
+  }
+  wait();
+});
+</script>
+</head>
+<body>
+<div id="app">
+<video id="cameraVideo" autoplay playsinline muted></video>
+<canvas id="skeletonCanvas" width="240" height="180"></canvas>
+<canvas id="hiddenCanvas" width="160" height="120"></canvas>
+<div id="threeLayer"></div>
+<canvas id="fallbackCanvas"></canvas>
+
+<div id="ui">
+  <div class="row"><strong>🎨 涂鸦特工 · 街道版</strong></div>
+  <div class="row">
+    <span class="pill">状态：<span id="stateText">初始化</span></span>
+    <span class="pill">输入：<span id="inputMode">初始化</span></span>
+    <span class="pill" id="camStablePill" style="display:none">体感：<span id="camStable" style="color:#ff9800">等待中</span></span>
+  </div>
+  <div class="row">
+    <span class="pill">携带颜色：<span id="carriedDot" class="color-dot"></span><span id="carriedText">无</span></span>
+    <span class="pill">目标区域：<span id="targetDot" class="color-dot"></span><span id="targetText">-</span></span>
+  </div>
+  <div class="row">
+    <span>涂色进度</span>
+    <div id="progressWrap"><div id="progressBar"></div></div>
+    <span id="progressText">0%</span>
+  </div>
+  <div id="tipText" style="color:#aab;font-size:12px;margin-top:4px">输入方向开始滑行；向上挥手/W加速；握拳/Space停止；按住J喷涂</div>
+</div>
+
+<div id="scoreBoard">
+  <span>🎨 <span id="paintedCount">0</span>/<span id="totalZones">0</span> 区块</span>
+  <span>⭐ <span id="scoreVal">0</span></span>
+</div>
+
+<div id="controls">
+  <button id="btnCamStart">📷 摄像头</button>
+  <button id="btnCamStop">停止摄像头</button>
+  <button id="btnReinit">🔄 重试检测</button>
+  <button id="btnSim">键鼠模式</button>
+  <button id="btnReset">重置 R</button>
+</div>
+
+<canvas id="miniMap" width="240" height="300"></canvas>
+<div id="mapTitle">🗺 街道地图</div>
+<div id="centerMessage">准备滑行！输入方向开始运动</div>
+<div id="hintBottom">键盘：A/D 左右换道，W 加速，S 反向，空格/J 喷涂；鼠标拖动转向 | 体感：左右摆手控向，向上挥手加速，握拳停止</div>
+<div id="debugPanel"></div>
+<div id="errorBox"></div>
+</div>
+
+<script>
+// ============================================================
+// 参数配置
+// ============================================================
+const PARAMS = {
+  moveSpeed: 4.2,
+  boostSpeed: 5.8,
+  laneWidth: 3.4,
+  paintDuration: 2.5,
+  collectRadius: 1.5,
+  cameraLostFallback: 2
+};
+
+const COLORS = {
+  none:   0xbfc4c9,
+  red:    0xff4141,
+  yellow: 0xffdf3d,
+  blue:   0x36a3ff,
+  green:  0x49ff88,
+  pink:   0xff4fd8,
+  cyan:   0x00e5ff,
+  orange: 0xff8c00,
+  road:   0x555a63,
+  roadDark: 0x333840,
+  sidewalk: 0x8a8e96
+};
+
+const COLOR_NAMES = { none:"无", red:"红", yellow:"黄", blue:"蓝", green:"绿", orange:"橙" };
+const PAINT_COLORS = ['red','yellow','blue','green','orange'];
+
+// ============================================================
+// 路网定义 - 基于图片中的均匀网格城市路网 (6×4 街区)
+// ============================================================
+// 每个路口坐标 col*12, row*12，构成棋盘格路网
+// 玩家从 (0, 12) 出发（下方中央）向上（-Z）行驶
+
+const GRID_W = 12;  // 街区宽
+const GRID_H = 14;  // 街区高
+
+// 路网节点: id, col, row
+// col: 0..6  row: 0..4  (row 0 = 最北/上方)
+const gridNodes = [];
+for (let row = 0; row <= 4; row++) {
+  for (let col = 0; col <= 6; col++) {
+    gridNodes.push({
+      id: row * 7 + col,
+      col, row,
+      x: (col - 3) * GRID_W,
+      z: (row - 4) * GRID_H + 12   // row4=底部=玩家出发区域附近
+    });
+  }
+}
+
+function nodeId(col, row) { return row * 7 + col; }
+function getNode(col, row) { return gridNodes[nodeId(col, row)]; }
+
+// 路段列表
+const roadSegments = [];
+// 水平路段
+for (let row = 0; row <= 4; row++) {
+  for (let col = 0; col < 6; col++) {
+    roadSegments.push({ id: `h_${col}_${row}`, fromNode: nodeId(col, row), toNode: nodeId(col+1, row), open: true, paintColor: null, paintProgress: 0 });
+  }
+}
+// 垂直路段
+for (let row = 0; row < 4; row++) {
+  for (let col = 0; col <= 6; col++) {
+    roadSegments.push({ id: `v_${col}_${row}`, fromNode: nodeId(col, row), toNode: nodeId(col, row+1), open: true, paintColor: null, paintProgress: 0 });
+  }
+}
+
+// 街区 (每个格子中间的建筑区域)
+const blocks = [];
+for (let row = 0; row < 4; row++) {
+  for (let col = 0; col < 6; col++) {
+    blocks.push({
+      id: `block_${col}_${row}`,
+      col, row,
+      cx: ((col - 3) * GRID_W) + GRID_W/2,
+      cz: ((row - 4) * GRID_H + 12) + GRID_H/2 - GRID_H,
+      painted: false,
+      targetColor: PAINT_COLORS[(col + row * 2) % PAINT_COLORS.length]
+    });
+  }
+}
+
+// 喷漆罐位置 - 放置在道路中央
+const canDefs = [];
+const canColorCycle = ['red','yellow','blue','green','orange','red','yellow','blue','green','orange','red','yellow'];
+let canIdx = 0;
+// 分散放置在各路段上
+[[1,2],[2,1],[4,2],[5,3],[3,0],[0,3],[6,1],[3,3],[1,0],[5,1],[2,3],[4,0]].forEach(([col,row]) => {
+  const n = getNode(col, row);
+  canDefs.push({ id: `can_${col}_${row}`, x: n.x, z: n.z, y: 1.2, colorType: canColorCycle[canIdx++], collected: false, radius: 1.5 });
+});
+
+// ============================================================
+// 摄像头识别 - MediaPipe Pose 18点位骨骼检测
+// ============================================================
+(function(){
+  // 18点位骨骼索引
+  const LANDMARK_INDICES = {
+    NOSE: 0,
+    LEFT_EYE: 1,
+    RIGHT_EYE: 2,
+    LEFT_EAR: 3,
+    RIGHT_EAR: 4,
+    LEFT_SHOULDER: 5,
+    RIGHT_SHOULDER: 6,
+    LEFT_ELBOW: 7,
+    RIGHT_ELBOW: 8,
+    LEFT_WRIST: 9,
+    RIGHT_WRIST: 10,
+    LEFT_HIP: 11,
+    RIGHT_HIP: 12,
+    LEFT_KNEE: 13,
+    RIGHT_KNEE: 14,
+    LEFT_ANKLE: 15,
+    RIGHT_ANKLE: 16,
+    CENTER_HIP: 17  // 虚拟点
+  };
+
+  // 18点连接关系
+  const CONNECTIONS = [
+    [0, 1], [0, 2], [1, 3], [2, 4],  // 头部
+    [5, 6], [5, 11], [6, 12], [11, 12],  // 躯干
+    [5, 7], [7, 9],  // 左臂
+    [6, 8], [8, 10],  // 右臂
+    [11, 13], [13, 15],  // 左腿
+    [12, 14], [14, 16]   // 右腿
+  ];
+
+  let video = null, canvas = null, ctx = null;
+  let sk = null, skctx = null;
+  let stream = null, pose = null, mpCamera = null;
+  let prevLandmarks = null;
+  let lastPoseTime = 0;
+  let useMediaPipe = false;
+  let useSimpleMode = false;
+  let mediaPipeInitAttempts = 0;
+  let maxMediaPipeInitAttempts = 3;
+  
+  // 动作状态
+  const state = {
+    enabled: false,
+    ready: false,
+    hasCamera: false,
+    confidence: 0,
+    message: '',
+    bodyCenter: { x: 0.5, y: 0.5 },
+    action: {
+      horizontalIntent: 0,
+      forwardBoostIntent: false,
+      brakeHold: false,
+      paintActive: false
+    },
+    raw: {
+      motionAmount: 0,
+      leftHandUp: false,
+      rightHandUp: false,
+      leftUp: false,
+      rightUp: false
+    }
+  };
+
+  // 方向检测状态
+  let confirmedDir = 0;
+  let lastDirChangeAt = 0;
+  let lastBoostAt = 0;
+  let lastWaveAt = 0;
+  const DIR_CHANGE_MIN_MS = 400;
+  const WAVE_SUSTAIN_MS = 600;
+
+  // 骨骼历史用于平滑
+  const SMOOTH_FRAMES = 5;
+  let landmarkHistory = [];
+
+  // 简单模式变量
+  let simplePrevFrame = null;
+  let simpleSmoothX = 0.5, simpleSmoothY = 0.5;
+
+  // 检查是否可以安全使用摄像头
+  function canUseCamera() {
+    const hasGetUserMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+    const isSecure = window.isSecureContext;
+    console.log('[Camera] canUseCamera 检查:', { hasGetUserMedia, isSecure, location: window.location.protocol });
+    return hasGetUserMedia && isSecure;
+  }
+
+  // 检查 MediaPipe 是否可用
+  function isMediaPipeReady() {
+    const ready = !!(window.__MEDIAPIPE_LOADED__ && window.Pose);
+    console.log('[Camera] MediaPipe 检查:', {
+      loaded: window.__MEDIAPIPE_LOADED__,
+      hasPose: !!window.Pose,
+      ready: ready
+    });
+    return ready;
+  }
+
+  // 计算髋部中心
+  function calculateHipCenter(landmarks) {
+    return {
+      x: (landmarks[LANDMARK_INDICES.LEFT_HIP].x + landmarks[LANDMARK_INDICES.RIGHT_HIP].x) / 2,
+      y: (landmarks[LANDMARK_INDICES.LEFT_HIP].y + landmarks[LANDMARK_INDICES.RIGHT_HIP].y) / 2,
+      z: (landmarks[LANDMARK_INDICES.LEFT_HIP].z + landmarks[LANDMARK_INDICES.RIGHT_HIP].z) / 2,
+      visibility: Math.min(landmarks[LANDMARK_INDICES.LEFT_HIP].visibility, landmarks[LANDMARK_INDICES.RIGHT_HIP].visibility)
+    };
+  }
+
+  function isValidLandmark(lm) {
+    return lm && lm.visibility !== undefined && lm.visibility > 0.5;
+  }
+
+  function shouldersVisible(landmarks) {
+    return isValidLandmark(landmarks[LANDMARK_INDICES.LEFT_SHOULDER]) &&
+           isValidLandmark(landmarks[LANDMARK_INDICES.RIGHT_SHOULDER]);
+  }
+
+  // 手势检测：手是否抬高（相对于肩膀）
+  function isHandRaised(wristLm, shoulderLm) {
+    if (!isValidLandmark(wristLm) || !isValidLandmark(shoulderLm)) return false;
+    const diff = shoulderLm.y - wristLm.y;
+    return diff > 0.12;
+  }
+
+  // 手臂伸展程度
+  function getArmSpread(landmarks) {
+    if (!shouldersVisible(landmarks)) return 0;
+    const ls = landmarks[LANDMARK_INDICES.LEFT_SHOULDER];
+    const rs = landmarks[LANDMARK_INDICES.RIGHT_SHOULDER];
+    const lw = landmarks[LANDMARK_INDICES.LEFT_WRIST];
+    const rw = landmarks[LANDMARK_INDICES.RIGHT_WRIST];
+    
+    if (!isValidLandmark(lw) || !isValidLandmark(rw)) return 0;
+    
+    const leftSpread = ls.x - lw.x;
+    const rightSpread = rw.x - rs.x;
+    
+    return (leftSpread + (-rightSpread)) / 2;
+  }
+
+  // 主处理函数（MediaPipe模式）
+  function processLandmarks(landmarks) {
+    if (!landmarks || landmarks.length < 17) return null;
+
+    const now = performance.now();
+    lastPoseTime = now;
+    
+    // 计算髋部中心
+    const hipCenter = calculateHipCenter(landmarks);
+    landmarks[17] = hipCenter;
+    
+    // 身体中心
+    let bodyCenterX = 0, bodyCenterY = 0, count = 0;
+    [LANDMARK_INDICES.LEFT_SHOULDER, LANDMARK_INDICES.RIGHT_SHOULDER].forEach(i => {
+      if (isValidLandmark(landmarks[i])) {
+        bodyCenterX += landmarks[i].x;
+        bodyCenterY += landmarks[i].y;
+        count++;
+      }
+    });
+    if (count > 0) {
+      bodyCenterX /= count;
+      bodyCenterY /= count;
+    }
+    
+    state.bodyCenter = { x: bodyCenterX, y: bodyCenterY };
+
+    // 历史平滑
+    landmarkHistory.push({ landmarks: JSON.parse(JSON.stringify(landmarks)), time: now });
+    if (landmarkHistory.length > SMOOTH_FRAMES) landmarkHistory.shift();
+
+    // 置信度
+    let validCount = 0;
+    for (let i = 0; i < 17; i++) {
+      if (isValidLandmark(landmarks[i])) validCount++;
+    }
+    state.confidence = validCount / 17;
+    
+    // 手势检测
+    const leftHandUp = isHandRaised(landmarks[LANDMARK_INDICES.LEFT_WRIST], landmarks[LANDMARK_INDICES.LEFT_SHOULDER]);
+    const rightHandUp = isHandRaised(landmarks[LANDMARK_INDICES.RIGHT_WRIST], landmarks[LANDMARK_INDICES.RIGHT_SHOULDER]);
+    
+    state.raw.leftHandUp = leftHandUp;
+    state.raw.rightHandUp = rightHandUp;
+    
+    // 方向控制
+    const armSpread = getArmSpread(landmarks);
+    const DEAD_ZONE = 0.08, HYST = 0.04;
+    let rawDir = 0;
+    
+    if (armSpread > DEAD_ZONE + HYST) rawDir = -1;
+    else if (armSpread < -(DEAD_ZONE + HYST)) rawDir = 1;
+    
+    if (rawDir !== 0 && rawDir !== confirmedDir && (now - lastDirChangeAt) > DIR_CHANGE_MIN_MS) {
+      confirmedDir = rawDir;
+      lastDirChangeAt = now;
+    } else if (rawDir === 0) {
+      confirmedDir = 0;
+    }
+
+    // 加速检测
+    const bothHandsUp = leftHandUp && rightHandUp;
+    const upwardWave = (bothHandsUp || leftHandUp || rightHandUp) && bodyCenterY < 0.5 && state.confidence > 0.6;
+    
+    if (upwardWave) lastWaveAt = now;
+    const boostLatch = now - lastWaveAt < WAVE_SUSTAIN_MS;
+    if (upwardWave) lastBoostAt = now;
+    
+    // 停止检测
+    const bothHandsDown = !leftHandUp && !rightHandUp && state.confidence > 0.5;
+    const brakeHold = bothHandsDown && bodyCenterY > 0.4 && bodyCenterY < 0.7;
+    
+    state.action.brakeHold = brakeHold;
+    state.action.forwardBoostIntent = !brakeHold && boostLatch;
+    state.action.horizontalIntent = brakeHold ? 0 : confirmedDir;
+    state.action.paintActive = !brakeHold && !boostLatch && state.confidence > 0.4;
+    
+    return landmarks;
+  }
+
+  // 绘制骨骼
+  function drawSkeleton(landmarks, confidence) {
+    if (!skctx) {
+      console.warn('[Camera] skctx 未初始化');
+      return;
+    }
+    
+    skctx.clearRect(0, 0, 240, 180);
+    
+    // 背景边框
+    skctx.strokeStyle = 'rgba(0, 229, 255, 0.3)';
+    skctx.lineWidth = 2;
+    skctx.strokeRect(1, 1, 238, 178);
+    
+    if (!landmarks || landmarks.length < 17) {
+      // 等待状态 - 显示动画效果
+      skctx.fillStyle = '#00e5ff';
+      skctx.font = 'bold 12px sans-serif';
+      skctx.textAlign = 'center';
+      skctx.fillText('⏳ 等待骨骼检测...', 120, 90);
+      
+      skctx.fillStyle = '#888';
+      skctx.font = '10px sans-serif';
+      skctx.fillText('请站到摄像头前', 120, 110);
+      
+      // 检测模式
+      skctx.fillStyle = useMediaPipe ? '#49ff88' : '#ff9800';
+      skctx.font = 'bold 10px sans-serif';
+      skctx.textAlign = 'left';
+      skctx.fillText(useMediaPipe ? 'MediaPipe 骨骼' : '简单运动', 6, 14);
+      return;
+    }
+
+    const w = 240, h = 180;
+    const scaleX = (x) => (1 - x) * w;
+    const scaleY = (y) => y * h;
+    
+    const isBrake = state.action.brakeHold;
+    const isBoost = state.action.forwardBoostIntent;
+    const mainColor = isBrake ? '#ff5252' : isBoost ? '#49ff88' : '#00e5ff';
+    const fillColor = isBrake ? '#ffeb3b' : isBoost ? '#49ff88' : '#fff176';
+
+    skctx.save();
+    skctx.lineWidth = 2.5;
+    skctx.strokeStyle = mainColor;
+    skctx.fillStyle = fillColor;
+
+    // 连接线
+    CONNECTIONS.forEach(([a, b]) => {
+      const la = landmarks[a], lb = landmarks[b];
+      if (la && lb && la.visibility > 0.5 && lb.visibility > 0.5) {
+        skctx.beginPath();
+        skctx.moveTo(scaleX(la.x), scaleY(la.y));
+        skctx.lineTo(scaleX(lb.x), scaleY(lb.y));
+        skctx.stroke();
+      }
+    });
+
+    // 关键点
+    for (let i = 0; i <= 16; i++) {
+      const lm = landmarks[i];
+      if (!lm || lm.visibility < 0.5) continue;
+      
+      const x = scaleX(lm.x);
+      const y = scaleY(lm.y);
+      const radius = (i === 0) ? 6 : 4;
+      
+      if (i === LANDMARK_INDICES.LEFT_WRIST || i === LANDMARK_INDICES.RIGHT_WRIST) {
+        skctx.fillStyle = state.raw.leftHandUp || state.raw.rightHandUp ? '#49ff88' : fillColor;
+      }
+      
+      skctx.beginPath();
+      skctx.arc(x, y, radius, 0, Math.PI * 2);
+      skctx.fill();
+      skctx.stroke();
+    }
+    
+    // 虚拟髋部中心
+    const hipLm = landmarks[17];
+    if (hipLm) {
+      skctx.fillStyle = '#ff9800';
+      skctx.beginPath();
+      skctx.arc(scaleX(hipLm.x), scaleY(hipLm.y), 3, 0, Math.PI * 2);
+      skctx.fill();
+    }
+
+    skctx.font = 'bold 10px sans-serif';
+    let statusText = useMediaPipe ? 'MediaPipe骨骼' : '简单运动';
+    if (isBrake) statusText = '停止';
+    else if (isBoost) statusText = '加速!';
+    skctx.fillText(statusText, 6, 14);
+
+    if (confirmedDir !== 0) {
+      skctx.font = 'bold 14px sans-serif';
+      skctx.fillStyle = confirmedDir < 0 ? '#ff5252' : '#36a3ff';
+      skctx.fillText(confirmedDir < 0 ? '◀' : '▶', 195, 20);
+    }
+
+    skctx.font = '9px sans-serif';
+    skctx.fillStyle = '#aaa';
+    skctx.fillText(`置信: ${(confidence * 100).toFixed(0)}%`, 6, 172);
+    
+    skctx.restore();
+  }
+
+  // Pose 检测回调
+  function onPoseResults(results) {
+    lastPoseTime = performance.now();
+    
+    // 详细日志
+    if (!window.__poseResultsLogged__) {
+      console.log('[Camera] onPoseResults 被调用! results:', results ? '有数据' : 'null');
+      window.__poseResultsLogged__ = true;
+      setTimeout(() => { window.__poseResultsLogged__ = false; }, 5000);
+    }
+    
+    if (results && results.poseLandmarks && results.poseLandmarks.length > 0) {
+      const landmarks = results.poseLandmarks;
+      const processed = processLandmarks(landmarks);
+      drawSkeleton(processed, state.confidence);
+      
+      // 每秒输出一次检测状态
+      if (!window.__lastDebugTime__ || performance.now() - window.__lastDebugTime__ > 1000) {
+        window.__lastDebugTime__ = performance.now();
+        console.log('[Camera] ✓ 骨骼检测中 - 模式:', useMediaPipe ? 'MediaPipe' : '简单',
+          '| 置信度:', (state.confidence * 100).toFixed(1) + '%',
+          '| 关键点数:', landmarks.length,
+          '| 方向:', state.action.horizontalIntent !== 0 ? (state.action.horizontalIntent < 0 ? '左' : '右') : '无');
+      }
+    } else {
+      // 没有检测到骨骼
+      state.confidence = Math.max(0, state.confidence - 0.05);
+      drawSkeleton(null, 0);
+      
+      // 定期提示用户
+      if (!window.__noDetectionLogged__ || performance.now() - window.__noDetectionLogged__ > 5000) {
+        window.__noDetectionLogged__ = performance.now();
+        console.log('[Camera] ⚠ 没有检测到人体 - 请确保：1. 光线充足 2. 人在摄像头前 3. 上半身可见');
+      }
+    }
+  }
+
+  // 等待 MediaPipe 就绪
+  function waitForMediaPipe(callback, maxWait = 15000) {
+    const startTime = Date.now();
+    console.log('[Camera] 等待 MediaPipe 加载...');
+    
+    function check() {
+      if (isMediaPipeReady()) {
+        console.log('[Camera] MediaPipe 已就绪，耗时:', Date.now() - startTime, 'ms');
+        callback(true);
+        return;
+      }
+      
+      if (Date.now() - startTime > maxWait) {
+        console.warn('[Camera] MediaPipe 加载超时');
+        callback(false);
+        return;
+      }
+      
+      console.log('[Camera] 等待中... Pose:', !!window.Pose, 'Camera:', !!window.Camera);
+      setTimeout(check, 500);
+    }
+    
+    check();
+  }
+
+  // 初始化 MediaPipe Pose
+  function initMediaPipePose() {
+    mediaPipeInitAttempts++;
+    console.log('[Camera] initMediaPipePose 第', mediaPipeInitAttempts, '次尝试');
+    
+    if (!isMediaPipeReady()) {
+      console.warn('[Camera] MediaPipe 未就绪，使用简单模式');
+      initSimpleMode();
+      return;
+    }
+    
+    try {
+      useMediaPipe = true;
+      console.log('[Camera] 创建 Pose 实例...');
+      
+      pose = new Pose({
+        locateFile: (file) => {
+          console.log('[Camera] 加载模型文件:', file);
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+        }
+      });
+      
+      console.log('[Camera] 设置 Pose 选项...');
+      pose.setOptions({
+        modelComplexity: 0,      // 0 = 最快
+        smoothLandmarks: true,
+        enableSegmentation: false,
+        smoothSegmentation: false,
+        minDetectionConfidence: 0.4,  // 降低阈值
+        minTrackingConfidence: 0.4   // 降低阈值
+      });
+      
+      // 监听结果
+      pose.onResults(onPoseResults);
+      
+      // 监听错误
+      pose.onError = (error) => {
+        console.error('[Camera] Pose 错误:', error);
+      };
+      
+      console.log('[Camera] 开始发送视频帧...');
+      
+      // 使用 requestAnimationFrame 手动发送帧
+      let lastSendTime = 0;
+      let sendCount = 0;
+      let errorCount = 0;
+      const MIN_SEND_INTERVAL = 150; // 约6-7fps
+      
+      function sendFrame() {
+        if (!state.enabled || !pose || !video || useSimpleMode) {
+          if (state.enabled) requestAnimationFrame(sendFrame);
+          return;
+        }
+        
+        const now = performance.now();
+        if (now - lastSendTime >= MIN_SEND_INTERVAL) {
+          if (video.readyState >= 2) {
+            lastSendTime = now;
+            sendCount++;
+            
+            try {
+              pose.send({ image: video }).then(() => {
+                sendCount++;
+                window.__poseSendCount__ = sendCount;
+                if (sendCount === 1 || sendCount % 30 === 0) {
+                  console.log('[Camera] Pose.send() 成功 #' + sendCount);
+                }
+              }).catch(e => {
+                errorCount++;
+                window.__poseErrorCount__ = errorCount;
+                if (errorCount <= 5) console.error('[Camera] Pose.send() 错误:', e.message || e);
+              });
+            } catch (e) {
+              errorCount++;
+              window.__poseErrorCount__ = errorCount;
+              if (errorCount <= 5) console.error('[Camera] Pose.send() 异常:', e.message || e);
+            }
+          }
+        }
+        
+        if (state.enabled && !useSimpleMode) {
+          requestAnimationFrame(sendFrame);
+        }
+      }
+      
+      // 确保视频已准备好
+      if (video.readyState < 2) {
+        console.log('[Camera] 等待视频就绪...');
+        video.onloadeddata = () => {
+          console.log('[Camera] 视频已加载，开始骨骼检测');
+          showCenterMessage("18点位骨骼检测已开启！举起手臂控制方向", 2000);
+          sendFrame();
+        };
+      } else {
+        console.log('[Camera] 视频已就绪，开始骨骼检测');
+        showCenterMessage("18点位骨骼检测已开启！举起手臂控制方向", 2000);
+        sendFrame();
+      }
+      
+    } catch (e) {
+      console.error('[Camera] MediaPipe Pose 初始化失败:', e);
+      if (mediaPipeInitAttempts < maxMediaPipeInitAttempts) {
+        console.log('[Camera] 重试中...');
+        setTimeout(() => initMediaPipePose(), 1000);
+      } else {
+        initSimpleMode();
+      }
+    }
+  }
+
+  // 简单运动检测模式
+  function initSimpleMode() {
+    if (useMediaPipe) return;
+    
+    console.log('[Camera] 启动简单运动检测模式');
+    useSimpleMode = true;
+    showCenterMessage("使用简单运动检测模式 - 举起手控制方向", 2000);
+    
+    canvas.width = 160;
+    canvas.height = 120;
+    ctx = canvas.getContext('2d', { willReadFrequently: true });
+    simpleSmoothX = 0.5;
+    simpleSmoothY = 0.5;
+    
+    function simpleTick() {
+      // 继续循环直到被停止
+      if (!state.enabled) {
+        console.log('[Camera] 简单模式：已停止');
+        return;
+      }
+      
+      if (!video || video.readyState < 2) {
+        // 视频未就绪，稍后重试
+        setTimeout(simpleTick, 100);
+        return;
+      }
+      
+      if (useMediaPipe) {
+        // MediaPipe 已启动，不需要简单模式
+        console.log('[Camera] 简单模式：MediaPipe 已接管');
+        return;
+      }
+      
+      try {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        
+        if (simplePrevFrame) {
+          let sx = 0, sy = 0, c = 0;
+          const w = canvas.width, h = canvas.height;
+          
+          for (let y = 0; y < h; y += 4) {
+            for (let x = 0; x < w; x += 4) {
+              const i = (y * w + x) * 4;
+              const lum = (frame.data[i] + frame.data[i+1] + frame.data[i+2]) / 3;
+              const old = (simplePrevFrame[i] + simplePrevFrame[i+1] + simplePrevFrame[i+2]) / 3;
+              const dif = Math.abs(lum - old);
+              
+              if (dif > 25) {
+                sx += x;
+                sy += y;
+                c++;
+              }
+            }
+          }
+          
+          const motion = c / ((w/4) * (h/4));
+          state.raw.motionAmount = motion;
+          
+          if (c > 20 && motion > 0.015) {
+            const nx = (w - sx/c) / w;
+            const ny = sy / c / h;
+            
+            simpleSmoothX = simpleSmoothX * 0.7 + nx * 0.3;
+            simpleSmoothY = simpleSmoothY * 0.7 + ny * 0.3;
+            
+            state.bodyCenter = { x: simpleSmoothX, y: simpleSmoothY };
+            
+            const now = performance.now();
+            const DEAD_ZONE = 0.12;
+            let rawDir = 0;
+            
+            if (simpleSmoothX < 0.5 - DEAD_ZONE) rawDir = -1;
+            else if (simpleSmoothX > 0.5 + DEAD_ZONE) rawDir = 1;
+            
+            if (rawDir !== 0 && rawDir !== confirmedDir && (now - lastDirChangeAt) > DIR_CHANGE_MIN_MS) {
+              confirmedDir = rawDir;
+              lastDirChangeAt = now;
+            } else if (rawDir === 0) {
+              confirmedDir = 0;
+            }
+            
+            if (simpleSmoothY < 0.45 && motion > 0.03) {
+              lastWaveAt = now;
+            }
+            
+            const boostLatch = now - lastWaveAt < WAVE_SUSTAIN_MS;
+            state.action.horizontalIntent = confirmedDir;
+            state.action.forwardBoostIntent = boostLatch;
+            state.action.brakeHold = false;
+            state.action.paintActive = motion > 0.03;
+            state.confidence = Math.min(1, motion * 6);
+            
+            drawSimpleSkeleton(simpleSmoothX, simpleSmoothY, motion);
+          } else {
+            state.confidence = Math.max(0, state.confidence - 0.05);
+            if (state.confidence < 0.1) {
+              confirmedDir = 0;
+              state.action.horizontalIntent = 0;
+            }
+          }
+        }
+        
+        simplePrevFrame = new Uint8ClampedArray(frame.data);
+      } catch (e) {
+        console.error('[Camera] 简单模式错误:', e);
+      }
+      
+      // 继续循环
+      if (state.enabled && !useMediaPipe) {
+        requestAnimationFrame(simpleTick);
+      }
+    }
+    
+    simpleTick();
+  }
+
+  function drawSimpleSkeleton(nx, ny, motion) {
+    if (!skctx) return;
+    skctx.clearRect(0, 0, 240, 180);
+    
+    const cx = (1 - nx) * 240;
+    const cy = ny * 180;
+    
+    skctx.save();
+    skctx.lineWidth = 3;
+    skctx.strokeStyle = '#00e5ff';
+    skctx.fillStyle = '#fff176';
+    
+    const headY = Math.max(20, cy - 45);
+    const bodyBottom = Math.min(170, cy + 50);
+    
+    // 头部
+    skctx.beginPath();
+    skctx.arc(cx, headY + 10, 12, 0, Math.PI * 2);
+    skctx.fill();
+    skctx.stroke();
+    
+    // 身体
+    skctx.beginPath();
+    skctx.moveTo(cx, headY + 22);
+    skctx.lineTo(cx, bodyBottom);
+    skctx.stroke();
+    
+    // 手臂
+    const armMotion = Math.min(motion * 400, 35);
+    skctx.beginPath();
+    skctx.moveTo(cx, cy - 5);
+    skctx.lineTo(cx - 30 - armMotion, cy + 15);
+    skctx.moveTo(cx, cy - 5);
+    skctx.lineTo(cx + 30 + armMotion, cy + 15);
+    skctx.stroke();
+    
+    // 腿
+    skctx.beginPath();
+    skctx.moveTo(cx, bodyBottom);
+    skctx.lineTo(cx - 20, 175);
+    skctx.moveTo(cx, bodyBottom);
+    skctx.lineTo(cx + 20, 175);
+    skctx.stroke();
+    
+    if (confirmedDir !== 0) {
+      skctx.font = 'bold 18px sans-serif';
+      skctx.fillStyle = confirmedDir < 0 ? '#ff5252' : '#36a3ff';
+      skctx.fillText(confirmedDir < 0 ? '◀' : '▶', cx + confirmedDir * 50, cy);
+    }
+    
+    skctx.font = 'bold 10px sans-serif';
+    skctx.fillStyle = '#49ff88';
+    skctx.fillText('简单运动检测', 6, 14);
+    
+    skctx.restore();
+  }
+
+  // 启动摄像头
+  async function start() {
+    video = document.getElementById('cameraVideo');
+    canvas = document.getElementById('hiddenCanvas');
+    sk = document.getElementById('skeletonCanvas');
+    skctx = sk.getContext('2d');
+
+    console.log('[Camera] start() 被调用');
+    
+    if (!canUseCamera()) {
+      setInputModeUI("模拟输入（需HTTPS）");
+      state.message = "需安全上下文";
+      console.warn('[Camera] 需要 HTTPS 或 localhost');
+      return false;
+    }
+
+    try {
+      console.log('[Camera] 请求摄像头权限...');
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false
+      });
+      
+      video.srcObject = stream;
+      video.style.display = 'block';
+      video.style.visibility = 'visible';
+      sk.style.display = 'block';
+      sk.style.visibility = 'visible';
+      
+      // 立即显示等待状态
+      drawSkeleton(null, 0);
+      
+      await new Promise((resolve) => {
+        video.onloadedmetadata = () => {
+          console.log('[Camera] 视频元数据加载完成');
+          resolve();
+        };
+        // 超时兜底
+        setTimeout(resolve, 2000);
+      });
+      
+      await video.play();
+      console.log('[Camera] 视频开始播放');
+      
+      state.enabled = state.ready = state.hasCamera = true;
+      confirmedDir = 0;
+      lastDirChangeAt = 0;
+      lastBoostAt = 0;
+      lastWaveAt = 0;
+      landmarkHistory = [];
+      
+      console.log('[Camera] 摄像头启动成功');
+      console.log('[Camera] video.readyState:', video.readyState);
+      
+      // 等待 MediaPipe 就绪后初始化
+      waitForMediaPipe((ready) => {
+        if (ready) {
+          console.log('[Camera] MediaPipe 就绪，开始初始化骨骼检测');
+          initMediaPipePose();
+        } else {
+          console.log('[Camera] MediaPipe 超时，使用简单模式');
+          initSimpleMode();
+        }
+      });
+      
+      setInputModeUI("体感+键鼠");
+      return true;
+    } catch (e) {
+      console.error('[Camera] 摄像头启动失败:', e);
+      state.enabled = state.ready = state.hasCamera = false;
+      video.style.display = 'none';
+      sk.style.display = 'none';
+      setInputModeUI("键鼠/触摸");
+      showCenterMessage("摄像头不可用，已切换键鼠模式", 1800);
+      return false;
+    }
+  }
+
+  function stop() {
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+    }
+    if (pose) {
+      try { pose.close(); } catch(e) {}
+      pose = null;
+    }
+    useMediaPipe = false;
+    useSimpleMode = false;
+    
+    if (video) {
+      video.pause();
+      video.srcObject = null;
+      video.style.display = 'none';
+    }
+    document.getElementById('skeletonCanvas').style.display = 'none';
+    
+    confirmedDir = 0;
+    landmarkHistory = [];
+    simplePrevFrame = null;
+    
+    state.enabled = state.ready = state.hasCamera = false;
+    state.confidence = 0;
+    state.action.brakeHold = false;
+    state.action.forwardBoostIntent = false;
+    
+    setInputModeUI("键鼠/触摸");
+  }
+
+  function tick() {
+    return state;
+  }
+
+  window.LocalCameraRecognizer = { start, stop, tick, getState: () => state };
+  
+  // 手动测试函数（可在控制台调用）
+  window.__cameraTest = function() {
+    console.log('=== 摄像头测试 ===');
+    console.log('MediaPipe加载:', window.__MEDIAPIPE_LOADED__);
+    console.log('Pose类:', !!window.Pose);
+    console.log('摄像头状态:', LocalCameraRecognizer.getState());
+    
+    // 尝试绘制测试图形到骨骼画布
+    const sk = document.getElementById('skeletonCanvas');
+    if (sk) {
+      const ctx = sk.getContext('2d');
+      ctx.clearRect(0, 0, 240, 180);
+      ctx.fillStyle = '#00e5ff';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillText('测试: 画布正常', 10, 20);
+      ctx.fillText('点击摄像头按钮启动', 10, 40);
+      sk.style.display = 'block';
+      sk.style.visibility = 'visible';
+      console.log('骨骼画布已显示');
+    }
+  };
+  
+  // 页面加载后自动测试
+  setTimeout(() => {
+    console.log('[Init] 页面加载完成，骨骼检测就绪');
+    console.log('[Init] 请点击"📷 摄像头"按钮启动检测');
+    window.__cameraTest();
+    
+    // 每3秒检查 MediaPipe 加载状态
+    window.__mediapipeCheckInterval = setInterval(() => {
+      if (!window.__MEDIAPIPE_LOADED__) {
+        console.log('[MediaPipe] 仍在加载中... Pose:', !!window.Pose);
+      } else {
+        console.log('[MediaPipe] ✓ 加载完成');
+        clearInterval(window.__mediapipeCheckInterval);
+      }
+    }, 3000);
+  }, 500);
+  
+  // 骨骼检测状态检查
+  window.__checkSkeletonStatus = function() {
+    const cam = LocalCameraRecognizer.getState();
+    const sendCount = window.__poseSendCount__ || 0;
+    const errorCount = window.__poseErrorCount__ || 0;
+    console.log('=== 骨骼检测状态 ===');
+    console.log('摄像头已启动:', cam.enabled);
+    console.log('检测模式:', window.useMediaPipe ? 'MediaPipe' : '简单');
+    console.log('置信度:', (cam.confidence * 100).toFixed(1) + '%');
+    console.log('Pose.send() 调用次数:', sendCount);
+    console.log('Pose.send() 错误次数:', errorCount);
+    console.log('是否检测到人体:', cam.confidence > 0 ? '是' : '否');
+    console.log('====================');
+  };
+})();
+
+// ============================================================
+// 输入系统
+// ============================================================
+const Input={
+  horizontalIntent:0,forwardBoostIntent:false,reverseIntent:false,
+  brakeHold:false,paintActive:false,lastSource:"键鼠/触摸",
+  keys:{},pointerDown:false,pointerStartX:0,pointerX:0,pointerY:0,
+  pointerLastX:0,pointerLastY:0,pointerMotion:0,pointerDownTime:0,
+  lastDirChange:0,lastBrake:0,
+  update(dt){
+    let now=performance.now()/1000,ki=0,kb=false,kr=false,kbr=false,kp=false;
+    if(this.keys.ArrowLeft||this.keys.KeyA)ki=-1;
+    if(this.keys.ArrowRight||this.keys.KeyD)ki=1;
+    if(this.keys.ArrowUp||this.keys.KeyW)kb=true;
+    if(this.keys.ArrowDown||this.keys.KeyS)kr=true;
+    if(this.keys.Space)kbr=true;
+    if(this.keys.KeyJ)kp=true;
+    let pi=0,pbr=false,pp=false;
+    if(this.pointerDown){
+      let dx=this.pointerX-this.pointerStartX,dead=Math.max(36,innerWidth*.08);
+      pi=dx<-dead?-1:dx>dead?1:0;
+      let mdx=this.pointerX-this.pointerLastX,mdy=this.pointerY-this.pointerLastY;
+      this.pointerMotion=this.pointerMotion*.82+Math.hypot(mdx,mdy)*.18;
+      pp=this.pointerMotion>4.5;pbr=now-this.pointerDownTime>.45&&this.pointerMotion<2.2
+    }else this.pointerMotion*=.85;
+    let cam=LocalCameraRecognizer.getState(),
+      ca=cam.enabled&&cam.ready&&(cam.confidence>.08||cam.action.brakeHold||cam.action.forwardBoostIntent)?cam.action:null;
+    let di=0,bo=false,rv=false,br=false,pa=false,src="键鼠/触摸";
+    if(ki||kb||kr||kbr||kp){di=ki;bo=kb;rv=kr;br=kbr;pa=kp;src="键盘"}
+    else if(this.pointerDown){di=pi;br=pbr;pa=pp;src="鼠标/触摸"}
+    else if(ca){di=ca.horizontalIntent;bo=ca.forwardBoostIntent;br=ca.brakeHold;pa=ca.paintActive;src=br?"体感（握拳）":bo?"体感（加速）":"体感"}
+    if(di!==this.horizontalIntent&&(now-this.lastDirChange>.2||di===0)){this.horizontalIntent=di;this.lastDirChange=now}
+    this.brakeHold=br;this.forwardBoostIntent=bo;this.reverseIntent=rv;this.paintActive=pa;this.lastSource=src;
+    this.pointerLastX=this.pointerX;this.pointerLastY=this.pointerY
+  }
+};
+
+addEventListener("keydown",e=>{Input.keys[e.code]=true;if(e.code==="KeyR")resetGame();});
+addEventListener("keyup",e=>Input.keys[e.code]=false);
+addEventListener("pointerdown",e=>{Input.pointerDown=true;Input.pointerStartX=Input.pointerX=Input.pointerLastX=e.clientX;Input.pointerY=Input.pointerLastY=e.clientY;Input.pointerMotion=0;Input.pointerDownTime=performance.now()/1000});
+addEventListener("pointermove",e=>{Input.pointerX=e.clientX;Input.pointerY=e.clientY});
+addEventListener("pointerup",()=>Input.pointerDown=false);
+
+document.getElementById('btnCamStart').onclick=()=>LocalCameraRecognizer.start();
+document.getElementById('btnCamStop').onclick=()=>LocalCameraRecognizer.stop();
+document.getElementById('btnReinit').onclick=()=>{
+  LocalCameraRecognizer.stop();
+  setTimeout(() => LocalCameraRecognizer.start(), 300);
+  showCenterMessage("重新初始化摄像头...", 1500);
+};
+document.getElementById('btnSim').onclick=()=>{LocalCameraRecognizer.stop();setInputModeUI("键鼠/触摸");showCenterMessage("已切换键鼠模式",1200)};
+document.getElementById('btnReset').onclick=()=>resetGame();
+
+// ============================================================
+// WebGL 检测 & 2D 兜底渲染
+// ============================================================
+const Fallback2D = {
+  ctx: null,
+  ready: false,
+  
+  init() {
+    const cvs = document.getElementById('fallbackCanvas');
+    if (!cvs) return;
+    cvs.style.display = 'block';
+    this.ctx = cvs.getContext('2d');
+    this.ready = true;
+    this.resize();
+    addEventListener('resize', () => this.resize());
+  },
+  
+  resize() {
+    const cvs = document.getElementById('fallbackCanvas');
+    if (cvs) { cvs.width = innerWidth; cvs.height = innerHeight; }
+  },
+  
+  draw(t) {
+    if (!this.ready || !this.ctx) return;
+    const ctx = this.ctx;
+    const w = innerWidth, h = innerHeight;
+    
+    // 背景
+    ctx.fillStyle = '#1a1d24';
+    ctx.fillRect(0, 0, w, h);
+    
+    // 绘制道路网格
+    const cx = w/2, cy = h/2;
+    const gridSize = 40;
+    const offsetX = cx, offsetY = cy - 60;
+    
+    ctx.strokeStyle = '#4a5568';
+    ctx.lineWidth = 3;
+    
+    // 水平道路
+    for (let row = 0; row <= 4; row++) {
+      const y = offsetY + (row - 2) * gridSize;
+      ctx.beginPath();
+      ctx.moveTo(60, y);
+      ctx.lineTo(w - 60, y);
+      ctx.stroke();
+    }
+    
+    // 垂直道路
+    for (let col = 0; col <= 6; col++) {
+      const x = offsetX + (col - 3) * gridSize;
+      ctx.beginPath();
+      ctx.moveTo(x, offsetY - 60);
+      ctx.lineTo(x, offsetY + 120);
+      ctx.stroke();
+    }
+    
+    // 绘制玩家位置
+    const p = Game.player.pos;
+    const px = offsetX + p.x * 3;
+    const py = offsetY + (p.z - 12) * 2;
+    
+    ctx.fillStyle = '#00e5ff';
+    ctx.beginPath();
+    ctx.arc(px, py, 12, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // 绘制喷漆罐
+    canDefs.forEach(c => {
+      if (c.collected) return;
+      const gx = offsetX + c.x * 3;
+      const gy = offsetY + (c.z - 12) * 2;
+      ctx.fillStyle = '#' + (COLORS[c.colorType] || 0xffffff).toString(16).padStart(6, '0');
+      ctx.beginPath();
+      ctx.arc(gx, gy, 6, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    
+    // 标题
+    ctx.fillStyle = '#fff176';
+    ctx.font = 'bold 18px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('2D 兜底模式 (WebGL 不可用)', w/2, 40);
+    ctx.font = '14px sans-serif';
+    ctx.fillStyle = '#aaa';
+    ctx.fillText('键盘 A/D 控制方向，W 加速，J 喷涂', w/2, 65);
+    
+    // 分数
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('分数: ' + Game.score, w - 20, 40);
+  }
+};
+
+// 检测 WebGL 是否可用（缓存结果）
+let _webglAvailable = null;
+function checkWebGL() {
+  if (_webglAvailable !== null) return _webglAvailable;
+  try {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    _webglAvailable = !!gl;
+    return _webglAvailable;
+  } catch (e) {
+    _webglAvailable = false;
+    return false;
+  }
+}
+
+// ============================================================
+// Three.js 主游戏
+// ============================================================
+let scene, camera, renderer, clock, gameReady=false, lastTime=0, useFallback2D=false;
+
+const dom = {
+  threeLayer: document.getElementById('threeLayer'),
+  errorBox:   document.getElementById('errorBox'),
+  inputMode:  document.getElementById('inputMode'),
+  camStable:  document.getElementById('camStable'),
+  camStablePill: document.getElementById('camStablePill'),
+  stateText:  document.getElementById('stateText'),
+  carriedDot: document.getElementById('carriedDot'),
+  carriedText:document.getElementById('carriedText'),
+  targetDot:  document.getElementById('targetDot'),
+  targetText: document.getElementById('targetText'),
+  progressBar:document.getElementById('progressBar'),
+  progressText:document.getElementById('progressText'),
+  tipText:    document.getElementById('tipText'),
+  centerMessage:document.getElementById('centerMessage'),
+  miniMap:    document.getElementById('miniMap'),
+  paintedCount:document.getElementById('paintedCount'),
+  totalZones: document.getElementById('totalZones'),
+  scoreVal:   document.getElementById('scoreVal')
+};
+
+// ---- 游戏状态 ----
+const Game = {
+  state: 'idle',       // idle, skating, braking, painting, win
+  elapsed: 0,
+  score: 0,
+  player: {
+    group: null, board: null, halo: null, leftHand: null, rightHand: null,
+    pos: { x: 0, y: 0, z: 12 },
+    speed: 0,
+    dir: 0,            // 行进方向角（yaw）
+    carriedColor: 'none',
+    boardTilt: 0,
+    yaw: 0,
+    // 当前在哪条路段上
+    currentSegment: null,
+    // 路段上的t参数 (0~1)
+    segT: 0,
+    // 行进方向 1 = fromNode->toNode, -1 = toNode->fromNode
+    segDir: 1
+  },
+  meshes: {
+    roads: {},        // id -> mesh
+    roadPaint: {},    // id -> paint overlay mesh
+    blocks: {},       // id -> block group
+    cans: [],
+    particles: [],
+    playerHalo: null
+  },
+  paintZones: [],     // 当前激活的喷涂区域
+  currentPaintZone: null,
+  currentPaintProgress: 0
+};
+
+// ---- 建立 Three.js 场景 ----
+function initThreeGame() {
+  console.log('[Game] 开始初始化 Three.js 场景...');
+  try {
+  // 检查 Three.js 是否加载
+  if (window.__THREE_LOAD_FAILED__ || !window.THREE) {
+    console.warn('[Game] Three.js 加载失败，启用 2D 兜底模式');
+    initFallback2DMode();
+    return;
+  }
+  console.log('[Game] Three.js 版本:', THREE.REVISION || 'unknown');
+  console.log('[Game] THREE 对象类型:', typeof THREE);
+  
+  // 检查 WebGL
+  if (!checkWebGL()) {
+    console.warn('[Game] WebGL 不可用，启用 2D 兜底模式');
+    initFallback2DMode();
+    return;
+  }
+  console.log('[Game] WebGL 检测通过');
+  
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x1f2230);
+  scene.fog = new THREE.Fog(0x1f2230, 30, 90);
+  console.log('[Game] 场景创建成功');
+
+  camera = new THREE.PerspectiveCamera(58, innerWidth/innerHeight, 0.1, 200);
+  camera.position.set(0, 13, 20);
+  console.log('[Game] 相机创建成功');
+
+  try {
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  } catch(e) {
+    console.warn('[Game] WebGLRenderer 创建失败，启用 2D 兜底模式:', e);
+    initFallback2DMode();
+    return;
+  }
+  console.log('[Game] WebGL 渲染器创建成功');
+  
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.75));
+  renderer.setSize(innerWidth, innerHeight);
+  
+  // 兼容性检查
+  if (renderer.toneMapping !== undefined && THREE.ACESFilmicToneMapping !== undefined) {
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.6;
+  }
+  if (renderer.outputColorSpace !== undefined && THREE.SRGBColorSpace !== undefined) {
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+  }
+  
+  // 确保渲染器的 canvas 有正确的样式
+  renderer.domElement.style.position = 'absolute';
+  renderer.domElement.style.top = '0';
+  renderer.domElement.style.left = '0';
+  renderer.domElement.style.width = '100%';
+  renderer.domElement.style.height = '100%';
+  
+  dom.threeLayer.appendChild(renderer.domElement);
+  console.log('[Game] 渲染器 DOM 元素已添加到页面');
+  console.log('[Game] threeLayer 子元素数量:', dom.threeLayer.children.length);
+
+  clock = new THREE.Clock();
+
+  // 光照
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x6a7088, 1.1));
+  const dl = new THREE.DirectionalLight(0xffffff, 0.85);
+  dl.position.set(-10, 18, 12);
+  scene.add(dl);
+  console.log('[Game] 光照设置完成');
+
+  // 建造场景
+  buildGround();
+  console.log('[Game] 地面创建完成');
+  buildRoads();
+  console.log('[Game] 道路创建完成，', Object.keys(Game.meshes.roads).length, '条路段');
+  buildBlocks();
+  console.log('[Game] 街区创建完成');
+  buildCans();
+  console.log('[Game] 喷漆罐创建完成');
+  buildPlayer();
+  console.log('[Game] 玩家角色创建完成');
+
+  // 初始路径
+  initPlayerPosition();
+  console.log('[Game] 玩家初始位置设置完成');
+
+  addEventListener('resize', () => {
+    camera.aspect = innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+
+  gameReady = true;
+  useFallback2D = false;
+  dom.totalZones.textContent = blocks.length;
+  console.log('[Game] 游戏就绪！开始渲染循环');
+  updateDebugPanel(); // 立即更新调试面板
+
+  showCenterMessage('准备出发！输入方向开始滑行', 2200);
+  LocalCameraRecognizer.start();
+  requestAnimationFrame(loop);
+  } catch(e) {
+    console.error('[Game] initThreeGame error:', e);
+    dom.errorBox.style.display = 'block';
+    dom.errorBox.innerHTML = '<strong>场景初始化失败：' + e.message + '</strong><pre>' + (e.stack||'').slice(0,400) + '</pre>';
+    initFallback2DMode();
+  }
+}
+
+// ---- 2D 兜底模式初始化 ----
+function initFallback2DMode() {
+  useFallback2D = true;
+  Fallback2D.init();
+  gameReady = true;
+  dom.totalZones.textContent = blocks.length;
+  initPlayerPosition();
+  updateDebugPanel(); // 立即更新调试面板
+  console.log('[Game] 已切换到 2D 兜底模式');
+  showCenterMessage('2D 兜底模式！A/D 转向，W 加速，J 喷涂', 3000);
+  LocalCameraRecognizer.start();
+  requestAnimationFrame(loop2D);
+}
+
+// 2D 模式的游戏循环
+function loop2D() {
+  requestAnimationFrame(loop2D);
+  if (!gameReady || !useFallback2D) return;
+  
+  const dt = Math.min((performance.now() - (lastTime || performance.now())) / 1000, 0.05);
+  lastTime = performance.now();
+  
+  LocalCameraRecognizer.tick();
+  Input.update(dt);
+  updatePlayer(dt);
+  updateCollisions();
+  updateUI2D();
+  updateDebugPanel(); // 更新调试面板
+  Fallback2D.draw(performance.now() / 1000);
+}
+
+// 2D 模式的 UI 更新
+function updateUI2D() {
+  dom.inputMode.textContent = Input.lastSource;
+  
+  const cc = Game.player.carriedColor;
+  dom.carriedText.textContent = COLOR_NAMES[cc] || '无';
+  dom.carriedDot.style.background = '#' + ((COLORS[cc] || COLORS.none)).toString(16).padStart(6,'0');
+  
+  const seg = Game.player.currentSegment;
+  const prog = seg ? (seg.paintProgress || 0) : 0;
+  dom.progressBar.style.width = prog + '%';
+  dom.progressText.textContent = Math.round(prog) + '%';
+  
+  if (Game.state === 'idle') dom.tipText.textContent = '输入方向开始滑行！A/D转向，W加速，J喷涂';
+  else if (Input.brakeHold) dom.tipText.textContent = '停止中——松开继续滑行';
+  else if (cc === 'none') dom.tipText.textContent = '收集地图上的彩色喷漆罐，然后按J喷涂路面';
+  else if (Input.paintActive) dom.tipText.textContent = '喷涂中... 保持J键完成喷涂';
+  else dom.tipText.textContent = '按住J喷涂当前路段，完成4条围边即可给街区上色！';
+}
+
+function buildGround() {
+  // 大地面
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(200, 200),
+    new THREE.MeshStandardMaterial({ color: 0x5a5e66, roughness: 0.9 })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -0.05;
+  scene.add(ground);
+}
+
+function buildRoads() {
+  const roadMat = new THREE.MeshStandardMaterial({ color: COLORS.road, roughness: 0.85 });
+  const roadWidth = 3.4;
+  
+  roadSegments.forEach(seg => {
+    const nA = gridNodes[seg.fromNode];
+    const nB = gridNodes[seg.toNode];
+    const dx = nB.x - nA.x, dz = nB.z - nA.z;
+    const len = Math.hypot(dx, dz);
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(roadWidth, 0.16, len),
+      roadMat.clone()
+    );
+    mesh.position.set((nA.x + nB.x)/2, 0.04, (nA.z + nB.z)/2);
+    mesh.rotation.y = Math.atan2(dx, dz);
+    mesh.userData.segId = seg.id;
+    scene.add(mesh);
+    Game.meshes.roads[seg.id] = mesh;
+
+    // 路缘石
+    const edgeMat = new THREE.MeshStandardMaterial({ color: COLORS.sidewalk, roughness: 0.7 });
+    [-1, 1].forEach(s => {
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.22, len), edgeMat.clone());
+      edge.position.copy(mesh.position);
+      edge.rotation.copy(mesh.rotation);
+      edge.position.x += Math.cos(mesh.rotation.y) * s * (roadWidth/2 + 0.1);
+      edge.position.z += -Math.sin(mesh.rotation.y) * s * (roadWidth/2 + 0.1);
+      scene.add(edge);
+    });
+
+    // 涂色覆盖层 (初始透明)
+    const paintOverlay = new THREE.Mesh(
+      new THREE.BoxGeometry(roadWidth - 0.2, 0.06, len),
+      new THREE.MeshBasicMaterial({ color: 0xff4141, transparent: true, opacity: 0 })
+    );
+    paintOverlay.position.set((nA.x + nB.x)/2, 0.12, (nA.z + nB.z)/2);
+    paintOverlay.rotation.y = mesh.rotation.y;
+    scene.add(paintOverlay);
+    Game.meshes.roadPaint[seg.id] = paintOverlay;
+  });
+
+  // 路口铺装（交叉点）
+  gridNodes.forEach(n => {
+    const m = new THREE.Mesh(
+      new THREE.BoxGeometry(3.4, 0.16, 3.4),
+      new THREE.MeshStandardMaterial({ color: COLORS.road, roughness: 0.85 })
+    );
+    m.position.set(n.x, 0.04, n.z);
+    scene.add(m);
+  });
+}
+
+function buildBlocks() {
+  const blockMat = [0x8d929a, 0x747982, 0xa4a8ae, 0x6e7278, 0x9e9fa3];
+  blocks.forEach((b, i) => {
+    const g = new THREE.Group();
+    // 底座（人行道）
+    const base = new THREE.Mesh(
+      new THREE.BoxGeometry(GRID_W - 3.8, 0.12, GRID_H - 3.8),
+      new THREE.MeshStandardMaterial({ color: 0x9a9ea6, roughness: 0.8 })
+    );
+    base.position.y = 0.06;
+    g.add(base);
+
+    // 建筑群
+    const numBuildings = 3 + (i % 4);
+    for (let k = 0; k < numBuildings; k++) {
+      const w = 1.2 + Math.random() * 2.2;
+      const h = 1.8 + Math.random() * 6;
+      const d = 1.2 + Math.random() * 2.2;
+      const bld = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, d),
+        new THREE.MeshStandardMaterial({ color: blockMat[(i + k) % blockMat.length], roughness: 0.8 })
+      );
+      bld.position.set(
+        (Math.random() - 0.5) * (GRID_W - 4.5 - w),
+        h / 2 + 0.12,
+        (Math.random() - 0.5) * (GRID_H - 4.5 - d)
+      );
+      bld.userData.baseColor = bld.material.color.clone();
+      g.add(bld);
+    }
+    g.position.set(b.cx, 0, b.cz);
+    scene.add(g);
+    Game.meshes.blocks[b.id] = g;
+  });
+}
+
+function buildCans() {
+  canDefs.forEach((c, i) => {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: COLORS[c.colorType], emissive: COLORS[c.colorType], emissiveIntensity: 0.2 });
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.85, 18), mat);
+    body.rotation.x = Math.PI / 2;
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.5, 0.035, 8, 28),
+      new THREE.MeshBasicMaterial({ color: COLORS[c.colorType], transparent: true, opacity: 0.78 })
+    );
+    ring.rotation.x = Math.PI / 2;
+    g.add(body, ring);
+    g.position.set(c.x, c.y, c.z);
+    g.userData.baseY = c.y;
+    Game.meshes.cans.push(g);
+    scene.add(g);
+  });
+}
+
+function buildPlayer() {
+  const g = new THREE.Group();
+  
+  // 用胶囊形状替代 CapsuleGeometry（兼容 r128）
+  // 胶囊 = 圆柱体 + 两个半球
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x00d5ff });
+  const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.8, 16), bodyMat);
+  const cap1 = new THREE.Mesh(new THREE.SphereGeometry(0.38, 12, 8, 0, Math.PI*2, 0, Math.PI/2), bodyMat);
+  const cap2 = new THREE.Mesh(new THREE.SphereGeometry(0.38, 12, 8, 0, Math.PI*2, Math.PI/2, Math.PI/2), bodyMat);
+  cap1.position.y = 0.4;
+  cap2.position.y = -0.4;
+  const body = new THREE.Group();
+  body.add(cyl, cap1, cap2);
+  body.position.y = 1.1;
+  
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.4, 18, 14), new THREE.MeshStandardMaterial({ color: 0xffd2a6 }));
+  head.position.y = 1.98;
+  const board = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.15, 0.5), new THREE.MeshStandardMaterial({ color: 0x1f2430 }));
+  board.position.y = 0.15;
+  const lh = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 10), new THREE.MeshStandardMaterial({ color: 0xffd2a6 }));
+  const rh = lh.clone();
+  lh.position.set(-0.6, 1.3, 0);
+  rh.position.set(0.6, 1.3, 0);
+  const halo = new THREE.Mesh(
+    new THREE.TorusGeometry(0.88, 0.04, 8, 36),
+    new THREE.MeshBasicMaterial({ color: COLORS.none, transparent: true, opacity: 0.95 })
+  );
+  halo.rotation.x = Math.PI / 2;
+  halo.position.y = 0.04;
+  g.add(board, body, head, lh, rh, halo);
+  scene.add(g);
+  Object.assign(Game.player, { group: g, board, halo, leftHand: lh, rightHand: rh });
+}
+
+function initPlayerPosition() {
+  // 从底部中央路口出发
+  const startNode = getNode(3, 4); // 中央底部
+  Game.player.pos = { x: startNode.x, y: 0, z: startNode.z };
+  // 找一条从 row4 向 row3 的垂直路段
+  const initSeg = roadSegments.find(s => s.id === 'v_3_3');
+  if (initSeg) {
+    Game.player.currentSegment = initSeg;
+    Game.player.segT = 1.0; // 在 fromNode(row3) -> toNode(row4) 的末尾
+    Game.player.segDir = -1; // 向上走（toNode->fromNode = row4->row3）
+  }
+  updatePlayerTransform();
+}
+
+// ============================================================
+// 游戏主循环
+// ============================================================
+function loop() {
+  requestAnimationFrame(loop);
+  if (!gameReady) return;
+  
+  // 如果是 2D 兜底模式，跳过 3D 渲染
+  if (useFallback2D) return;
+  
+  const dt = Math.min(clock.getDelta(), 0.05);
+  lastTime += dt;
+
+  LocalCameraRecognizer.tick();
+  Input.update(dt);
+  updatePlayer(dt);
+  updateCollisions();
+  updateAnimations(dt);
+  updateCamera(dt);
+  updateUI();
+  updateDebugPanel(); // 更新调试面板
+  drawMiniMap();
+  renderer.render(scene, camera);
+}
+
+// -------- 玩家移动 (路段吸附式移动) --------
+function updatePlayer(dt) {
+  const p = Game.player;
+  if (Game.state === 'win') { updatePlayerTransform(); return; }
+
+  if (Input.brakeHold) {
+    p.speed = Math.max(0, p.speed - dt * 15);
+    updatePlayerTransform();
+    return;
+  }
+
+  if (Game.state === 'idle') {
+    if (Input.horizontalIntent !== 0 || Input.forwardBoostIntent) {
+      Game.state = 'skating';
+      p.speed = PARAMS.moveSpeed;
+      showCenterMessage('出发！收集喷罐，给街道涂上颜色！', 1600);
+    }
+    updatePlayerTransform();
+    return;
+  }
+
+  const speed = Input.forwardBoostIntent ? PARAMS.boostSpeed : PARAMS.moveSpeed;
+  p.speed = speed;
+
+  if (!p.currentSegment) {
+    // 找到离玩家最近的路口，重新寻路
+    const nearest = findNearestNode(p.pos.x, p.pos.z);
+    const segs = getSegsOfNode(nearest.id);
+    if (segs.length > 0) {
+      p.currentSegment = segs[0];
+      p.segT = 0;
+      p.segDir = 1;
+    }
+    return;
+  }
+
+  // 在当前路段上前进
+  const seg = p.currentSegment;
+  const nA = gridNodes[seg.fromNode];
+  const nB = gridNodes[seg.toNode];
+  const len = Math.hypot(nB.x - nA.x, nB.z - nA.z);
+
+  // 方向：segDir=1 from->to, segDir=-1 to->from
+  let tDelta = (p.speed * dt) / len;
+
+  if (Input.reverseIntent) tDelta = -tDelta;
+
+  p.segT += tDelta * p.segDir;
+
+  // 到达路段端点
+  if (p.segT >= 1.0 || p.segT <= 0.0) {
+    // 到达哪个节点
+    const reachedNode = p.segT >= 1.0
+      ? gridNodes[seg.toNode]
+      : gridNodes[seg.fromNode];
+    p.segT = p.segT >= 1.0 ? 1.0 : 0.0;
+
+    // 选下一条路段
+    const nextSeg = chooseNextSegment(seg, reachedNode, Input.horizontalIntent);
+    if (nextSeg) {
+      // 确定新方向
+      const newDir = nextSeg.fromNode === reachedNode.id ? 1 : -1;
+      p.currentSegment = nextSeg;
+      p.segDir = newDir;
+      p.segT = newDir === 1 ? 0.0 : 1.0;
+    }
+  }
+
+  // 更新 3D 坐标
+  const t = p.segT;
+  p.pos.x = nA.x + (nB.x - nA.x) * t;
+  p.pos.z = nA.z + (nB.z - nA.z) * t;
+
+  // 行进朝向
+  const dx = (nB.x - nA.x) * p.segDir;
+  const dz = (nB.z - nA.z) * p.segDir;
+  const targetYaw = Math.atan2(dx, dz);
+  p.yaw = lerpAngle(p.yaw, targetYaw, Math.min(1, dt * 8));
+
+  updatePlayerTransform();
+
+  // 喷涂检测
+  if (Input.paintActive) {
+    tryPaintNearbyRoad(dt);
+  }
+}
+
+function lerpAngle(a, b, t) {
+  let d = b - a;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return a + d * t;
+}
+
+// 选下一条路段（考虑玩家输入方向）
+function chooseNextSegment(currentSeg, nodeAtEnd, horizInput) {
+  const candidates = getSegsOfNode(nodeAtEnd.id).filter(s => s !== currentSeg);
+  if (candidates.length === 0) {
+    // 死路，原路返回
+    return currentSeg;
+  }
+  if (candidates.length === 1) return candidates[0];
+
+  // 根据当前行进方向和玩家横向输入选择
+  const segDx = gridNodes[currentSeg.toNode].x - gridNodes[currentSeg.fromNode].x;
+  const segDz = gridNodes[currentSeg.toNode].z - gridNodes[currentSeg.fromNode].z;
+  const forwardAngle = Math.atan2(segDx, segDz) * (Game.player.segDir > 0 ? 1 : -1);
+
+  // 为每条候选路段计算方向
+  let best = candidates[0];
+  let bestScore = -999;
+  candidates.forEach(seg => {
+    const nOther = seg.fromNode === nodeAtEnd.id ? gridNodes[seg.toNode] : gridNodes[seg.fromNode];
+    const dx2 = nOther.x - nodeAtEnd.x;
+    const dz2 = nOther.z - nodeAtEnd.z;
+    const angle = Math.atan2(dx2, dz2);
+    let diff = angle - forwardAngle;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    // horizInput=-1偏左，1偏右
+    // diff < 0 = 左转, diff > 0 = 右转, diff≈0 = 直行
+    let score = -Math.abs(diff); // 默认倾向直行
+    if (horizInput < 0) score = -Math.abs(diff + Math.PI/2); // 倾向左转
+    if (horizInput > 0) score = -Math.abs(diff - Math.PI/2); // 倾向右转
+    if (Math.abs(diff) > Math.PI * 0.9) score -= 10; // 不允许掉头
+    if (score > bestScore) { bestScore = score; best = seg; }
+  });
+  return best;
+}
+
+function getSegsOfNode(nodeId) {
+  return roadSegments.filter(s => s.fromNode === nodeId || s.toNode === nodeId);
+}
+
+function findNearestNode(x, z) {
+  let best = gridNodes[0], bestD = Infinity;
+  gridNodes.forEach(n => {
+    const d = Math.hypot(n.x - x, n.z - z);
+    if (d < bestD) { bestD = d; best = n; }
+  });
+  return best;
+}
+
+function updatePlayerTransform() {
+  const p = Game.player;
+  const g = p.group;
+  if (!g) return;
+  g.position.set(p.pos.x, 0, p.pos.z);
+  g.rotation.y = p.yaw;
+
+  p.boardTilt = p.boardTilt * 0.82 + (-Input.horizontalIntent * 0.14) * 0.18;
+  p.board.rotation.z = p.boardTilt;
+  g.rotation.z = p.boardTilt * 0.35;
+
+  p.leftHand.position.y  = 1.3 + (Input.paintActive ? Math.abs(Math.sin(lastTime*15))*0.45 : Input.forwardBoostIntent ? 0.55 : Math.sin(lastTime*8)*0.12);
+  p.rightHand.position.y = 1.3 + (Input.paintActive ? Math.abs(Math.cos(lastTime*15))*0.45 : Input.forwardBoostIntent ? 0.55 : -Math.sin(lastTime*8)*0.12);
+
+  if (Input.brakeHold) {
+    p.leftHand.position.set(-0.25, 1.15, 0.18);
+    p.rightHand.position.set(0.25, 1.15, 0.18);
+  } else {
+    p.leftHand.position.x = -0.6; p.leftHand.position.z = 0;
+    p.rightHand.position.x = 0.6; p.rightHand.position.z = 0;
+  }
+  p.halo.material.color.setHex(COLORS[p.carriedColor] || COLORS.none);
+  p.halo.rotation.z += Input.forwardBoostIntent ? 0.07 : 0.035;
+}
+
+// -------- 碰撞检测 --------
+function updateCollisions() {
+  const pp = Game.player.pos;
+  canDefs.forEach((c, i) => {
+    if (c.collected) return;
+    if (Math.hypot(pp.x - c.x, pp.z - c.z) < c.radius) {
+      c.collected = true;
+      Game.meshes.cans[i].visible = false;
+      setCarriedColor(c.colorType);
+      spawnColorSplash(c.x, c.y, c.z, COLORS[c.colorType], 16);
+      showCenterMessage('获得 ' + COLOR_NAMES[c.colorType] + ' 色喷漆！按J喷涂路面', 1200);
+    }
+  });
+}
+
+// -------- 喷涂路面 --------
+function tryPaintNearbyRoad(dt) {
+  const p = Game.player;
+  const seg = p.currentSegment;
+  if (!seg) return;
+  if (!p.carriedColor || p.carriedColor === 'none') {
+    showCenterMessage('需要先收集喷漆罐！', 900);
+    return;
+  }
+
+  // 检查是否是该颜色对应的目标区域
+  seg.paintProgress = Math.min(100, (seg.paintProgress || 0) + (100 / PARAMS.paintDuration) * dt);
+  const overlay = Game.meshes.roadPaint[seg.id];
+  if (overlay) {
+    overlay.material.color.setHex(COLORS[p.carriedColor] || COLORS.red);
+    overlay.material.opacity = (seg.paintProgress / 100) * 0.72;
+  }
+
+  // 粒子效果
+  spawnPaintParticles(COLORS[p.carriedColor]);
+
+  if (seg.paintProgress >= 100 && !seg.paintColor) {
+    seg.paintColor = p.carriedColor;
+    Game.score += 50;
+    // 检查街区是否完成
+    checkBlocksCompletion();
+    // 检查通关
+    if (blocks.every(b => b.painted)) {
+      Game.state = 'win';
+      showCenterMessage('🎉 恭喜通关！所有街区涂色完成！', 8000);
+      colorizeCity();
+    }
+  }
+}
+
+function checkBlocksCompletion() {
+  blocks.forEach(b => {
+    if (b.painted) return;
+    // 检查围绕该街区的4条路段是否都已涂色
+    const surrounding = [
+      `h_${b.col}_${b.row}`,     // 上方水平段
+      `h_${b.col}_${b.row+1}`,   // 下方水平段
+      `v_${b.col}_${b.row}`,     // 左侧垂直段
+      `v_${b.col+1}_${b.row}`    // 右侧垂直段
+    ];
+    const allPainted = surrounding.every(id => {
+      const s = roadSegments.find(r => r.id === id);
+      return s && s.paintColor;
+    });
+    if (allPainted) {
+      b.painted = true;
+      Game.score += 200;
+      dom.paintedCount.textContent = blocks.filter(x => x.painted).length;
+      dom.scoreVal.textContent = Game.score;
+      // 给街区着色
+      const g = Game.meshes.blocks[b.id];
+      if (g) {
+        const pal = [COLORS.red, COLORS.yellow, COLORS.blue, COLORS.green, COLORS.orange, COLORS.pink];
+        g.traverse(child => {
+          if (child.isMesh && child.material) {
+            child.material.color.setHex(pal[Math.floor(Math.random() * pal.length)]);
+          }
+        });
+      }
+      spawnColorSplash(b.cx, 1, b.cz, COLORS[b.targetColor] || COLORS.cyan, 30);
+      showCenterMessage('街区完成 +200分！', 1000);
+    }
+  });
+  dom.scoreVal.textContent = Game.score;
+}
+
+function colorizeCity() {
+  const pal = [COLORS.red, COLORS.yellow, COLORS.blue, COLORS.green, COLORS.orange, COLORS.pink, COLORS.cyan];
+  blocks.forEach((b, i) => {
+    const g = Game.meshes.blocks[b.id];
+    if (g) g.traverse(c => { if (c.isMesh && c.material) c.material.color.setHex(pal[i % pal.length]); });
+  });
+}
+
+// -------- 动画 --------
+function updateAnimations(dt) {
+  // 喷漆罐旋转
+  Game.meshes.cans.forEach((m, i) => {
+    if (m && m.visible) {
+      m.rotation.y += dt * 2.4;
+      m.position.y = canDefs[i].y + Math.sin(lastTime * 3 + i) * 0.18;
+    }
+  });
+  // 粒子
+  for (let i = Game.meshes.particles.length - 1; i >= 0; i--) {
+    const p = Game.meshes.particles[i];
+    p.userData.age += dt;
+    p.position.addScaledVector(p.userData.velocity, dt);
+    p.userData.velocity.y -= dt * 4;
+    const r = 1 - p.userData.age / p.userData.life;
+    p.material.opacity = Math.max(0, r);
+    p.scale.setScalar(Math.max(0.02, r));
+    if (p.userData.age >= p.userData.life) { scene.remove(p); Game.meshes.particles.splice(i, 1); }
+  }
+}
+
+function spawnPaintParticles(color) {
+  const pos = Game.player.pos;
+  for (let i = 0; i < 2; i++) {
+    const m = new THREE.Mesh(
+      new THREE.SphereGeometry(0.06, 8, 6),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 })
+    );
+    m.position.set(pos.x + (Math.random()-0.5)*0.6, 0.8, pos.z + (Math.random()-0.5)*0.6);
+    m.userData.velocity = new THREE.Vector3((Math.random()-0.5)*3, Math.random()*2+1, (Math.random()-0.5)*3);
+    m.userData.life = 0.6;
+    m.userData.age = 0;
+    Game.meshes.particles.push(m);
+    scene.add(m);
+  }
+}
+
+function spawnColorSplash(x, y, z, color, count) {
+  for (let i = 0; i < count; i++) {
+    const m = new THREE.Mesh(
+      new THREE.SphereGeometry(0.07 + Math.random() * 0.08, 8, 6),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 })
+    );
+    m.position.set(x, y, z);
+    m.userData.velocity = new THREE.Vector3((Math.random()-0.5)*6, Math.random()*5+1, (Math.random()-0.5)*6);
+    m.userData.life = 0.9 + Math.random() * 0.55;
+    m.userData.age = 0;
+    Game.meshes.particles.push(m);
+    scene.add(m);
+  }
+}
+
+// -------- 相机 --------
+function updateCamera(dt) {
+  const p = Game.player.pos;
+  let h = 11, back = 14, look = 7;
+  if (Game.state === 'idle') { h = 10; back = 13; look = 5; }
+  if (Input.forwardBoostIntent && Game.state === 'skating') { back = 17; look = 9; }
+  if (Input.brakeHold) { h = 9; back = 10; look = 3; }
+  if (Game.state === 'win') { h = 22; back = 25; look = 0; }
+
+  camera.position.lerp(new THREE.Vector3(p.x, h, p.z + back), Math.min(1, dt * 3.0));
+
+  // 看向玩家前方
+  const lookFwX = p.x + Math.sin(Game.player.yaw) * look;
+  const lookFwZ = p.z - Math.cos(Game.player.yaw) * look;
+  camera.lookAt(new THREE.Vector3(lookFwX, 1.5, lookFwZ));
+}
+
+// -------- 迷你地图 --------
+function drawMiniMap() {
+  const c = dom.miniMap;
+  const ctx = c.getContext('2d');
+  const w = c.width, h = c.height;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = 'rgba(8,12,18,.72)';
+  ctx.fillRect(0, 0, w, h);
+
+  // 坐标变换：世界 X[-36..36], Z[-44..12] -> 画布
+  const worldW = 80, worldH = 68;
+  const ox = w / 2, oz = h * 0.78;
+  function tx(x) { return ox + x * (w / worldW); }
+  function tz(z) { return oz + (z - 12) * (h / worldH); }
+
+  // 绘制路段
+  ctx.lineCap = 'round';
+  roadSegments.forEach(seg => {
+    const nA = gridNodes[seg.fromNode], nB = gridNodes[seg.toNode];
+    ctx.strokeStyle = seg.paintColor ? '#' + (COLORS[seg.paintColor] || COLORS.road).toString(16).padStart(6,'0') : '#6e7480';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(tx(nA.x), tz(nA.z));
+    ctx.lineTo(tx(nB.x), tz(nB.z));
+    ctx.stroke();
+  });
+
+  // 绘制喷漆罐
+  canDefs.forEach(c2 => {
+    if (c2.collected) return;
+    ctx.fillStyle = '#' + (COLORS[c2.colorType] || 0xffffff).toString(16).padStart(6,'0');
+    ctx.beginPath();
+    ctx.arc(tx(c2.x), tz(c2.z), 4, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // 绘制玩家
+  const pp = Game.player.pos;
+  ctx.fillStyle = Input.forwardBoostIntent ? '#49ff88' : '#00e5ff';
+  ctx.beginPath();
+  ctx.arc(tx(pp.x), tz(pp.z), Input.forwardBoostIntent ? 7 : 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 图例
+  ctx.fillStyle = '#aaa';
+  ctx.font = '11px sans-serif';
+  ctx.fillText('●玩家  ●喷漆罐  ─已涂', 10, h - 12);
+}
+
+// -------- UI 更新 --------
+function updateUI() {
+  const stateMap = {
+    idle: '待命',
+    skating: Input.brakeHold ? '停止中' : Input.forwardBoostIntent ? '加速滑行' : '滑行中',
+    win: '通关！'
+  };
+  dom.stateText.textContent = stateMap[Game.state] || Game.state;
+  dom.inputMode.textContent = Input.lastSource;
+
+  // 体感稳定性指示
+  const cam = LocalCameraRecognizer.getState();
+  if (cam.enabled && cam.hasCamera) {
+    dom.camStablePill.style.display = '';
+    const stable = cam.raw && cam.raw.stable;
+    dom.camStable.textContent = stable ? '稳定' : '等待中';
+    dom.camStable.style.color = stable ? '#49ff88' : '#ff9800';
+  } else {
+    dom.camStablePill.style.display = 'none';
+  }
+
+  const cc = Game.player.carriedColor;
+  dom.carriedText.textContent = COLOR_NAMES[cc] || '无';
+  dom.carriedDot.style.background = '#' + ((COLORS[cc] || COLORS.none)).toString(16).padStart(6,'0');
+  dom.carriedDot.style.color = dom.carriedDot.style.background;
+
+  // 当前路段喷涂进度
+  const seg = Game.player.currentSegment;
+  const prog = seg ? (seg.paintProgress || 0) : 0;
+  dom.progressBar.style.width = prog + '%';
+  dom.progressText.textContent = Math.round(prog) + '%';
+
+  // 目标提示：最近未涂色路段的颜色（用玩家携带颜色）
+  if (cc !== 'none') {
+    dom.targetDot.style.background = '#' + (COLORS[cc] || COLORS.none).toString(16).padStart(6,'0');
+    dom.targetText.textContent = COLOR_NAMES[cc] || '-';
+  } else {
+    dom.targetDot.style.background = '#999';
+    dom.targetText.textContent = '收集喷罐';
+  }
+
+  // 提示文字
+  if (Game.state === 'idle') dom.tipText.textContent = '输入方向开始滑行！A/D或左右挥手转向，W或向上挥手加速';
+  else if (Input.brakeHold) dom.tipText.textContent = '停止中——松开继续滑行';
+  else if (Input.forwardBoostIntent) dom.tipText.textContent = '加速中！在路段上按住J/拖动喷涂路面';
+  else if (cc === 'none') dom.tipText.textContent = '收集地图上的彩色喷漆罐，然后按J喷涂路面';
+  else if (Input.paintActive) dom.tipText.textContent = '喷涂中... 保持J键/拖动完成喷涂';
+  else dom.tipText.textContent = '按住J/Space或拖动喷涂当前路段，完成4条围边即可给街区上色！';
+}
+
+// -------- 辅助函数 --------
+function setCarriedColor(c) {
+  Game.player.carriedColor = c;
+  if (Game.player.halo) Game.player.halo.material.color.setHex(COLORS[c] || COLORS.none);
+}
+
+function showCenterMessage(t, d) {
+  dom.centerMessage.textContent = t;
+  dom.centerMessage.style.opacity = '1';
+  clearTimeout(showCenterMessage._t);
+  showCenterMessage._t = setTimeout(() => dom.centerMessage.style.opacity = '.18', d || 1400);
+}
+
+function setInputModeUI(t) {
+  dom.inputMode.textContent = t;
+  const cam = LocalCameraRecognizer.getState();
+  dom.camStablePill.style.display = (cam.enabled && cam.hasCamera) ? '' : 'none';
+}
+
+// -------- 调试面板 --------
+function updateDebugPanel() {
+  const panel = document.getElementById('debugPanel');
+  if (!panel) return;
+  
+  const cam = LocalCameraRecognizer.getState();
+  const mpLoaded = window.__MEDIAPIPE_LOADED__;
+  const poseExists = !!window.Pose;
+  const videoEl = document.getElementById('cameraVideo');
+  const videoReady = videoEl && videoEl.readyState >= 2;
+  
+  let detectMode = '未启动';
+  if (cam.enabled) {
+    detectMode = mpLoaded && poseExists ? 'MediaPipe骨骼' : '简单运动';
+  }
+  
+  const dirText = cam.action.horizontalIntent !== 0 
+    ? (cam.action.horizontalIntent < 0 ? '◀ 左' : '右 ▶') 
+    : cam.action.forwardBoostIntent ? '⚡ 加速' 
+    : cam.action.brakeHold ? '⬛ 停止' 
+    : '-';
+  
+  const info = [];
+  info.push('═══ 诊断 ═══');
+  info.push('游戏: ' + (gameReady ? '✓ 就绪' : '✗ 未就绪'));
+  info.push('渲染: ' + (useFallback2D ? '2D' : '3D WebGL'));
+  info.push('THREE: ' + (window.THREE ? '✓' : '✗'));
+  info.push('WebGL: ' + (checkWebGL() ? '✓' : '✗'));
+  info.push('═══ 摄像头 ═══');
+  info.push('状态: ' + (cam.enabled ? '开启 ✓' : '关闭'));
+  info.push('MediaPipe: ' + (mpLoaded ? '已加载 ✓' : '未加载'));
+  info.push('Pose类: ' + (poseExists ? '存在 ✓' : '不存在 ✗'));
+  info.push('视频: ' + (videoReady ? '就绪 ✓' : '未就绪'));
+  info.push('═══ 检测 ═══');
+  info.push('模式: ' + detectMode);
+  info.push('置信度: ' + (cam.confidence * 100).toFixed(1) + '%');
+  info.push('体感输入: ' + dirText);
+  info.push('═══ 游戏 ═══');
+  info.push('状态: ' + Game.state);
+  info.push('分数: ' + Game.score);
+  
+  panel.innerHTML = info.map(line => {
+    if (line.includes('✓')) return '<span style="color:#49ff88">' + line + '</span>';
+    if (line.includes('✗')) return '<span style="color:#ff5252">' + line + '</span>';
+    if (line.startsWith('══')) return '<span style="color:#ff9800">' + line + '</span>';
+    return '<span style="color:#aaa">' + line + '</span>';
+  }).join('<br>');
+  
+  panel.style.display = 'block';
+  panel.style.fontSize = '11px';
+  panel.style.lineHeight = '1.5';
+  panel.style.maxWidth = '200px';
+}
+
+function resetGame() {
+  Game.state = 'idle';
+  Game.elapsed = 0;
+  Game.score = 0;
+  dom.scoreVal.textContent = '0';
+  dom.paintedCount.textContent = '0';
+
+  // 重置路段
+  roadSegments.forEach(seg => {
+    seg.paintProgress = 0;
+    seg.paintColor = null;
+    if (!useFallback2D) {
+      const ov = Game.meshes.roadPaint[seg.id];
+      if (ov) ov.material.opacity = 0;
+    }
+  });
+
+  // 重置街区（仅在 3D 模式下）
+  if (!useFallback2D) {
+    blocks.forEach(b => {
+      b.painted = false;
+      const g = Game.meshes.blocks[b.id];
+      if (g) {
+        g.traverse(c => { if (c.isMesh && c.material && c.userData.baseColor) c.material.color.copy(c.userData.baseColor); });
+      }
+    });
+  } else {
+    blocks.forEach(b => b.painted = false);
+  }
+
+  // 重置喷漆罐
+  canDefs.forEach((c, i) => {
+    c.collected = false;
+    if (!useFallback2D && Game.meshes.cans[i]) Game.meshes.cans[i].visible = true;
+  });
+
+  // 重置粒子（仅在 3D 模式下）
+  if (!useFallback2D) {
+    Game.meshes.particles.forEach(p => scene && scene.remove(p));
+    Game.meshes.particles.length = 0;
+  }
+
+  // 重置玩家
+  setCarriedColor('none');
+  Game.player.yaw = 0;
+  Game.player.boardTilt = 0;
+  initPlayerPosition();
+
+  showCenterMessage('已重置！重新出发', 1800);
+}
+
+// ============================================================
+// 启动
+// ============================================================
+
+// 确保 Promise 在任何情况下都存在（即使脚本还在加载中）
+window.__THREE_LOADING_PROMISE__ = new Promise(function (r) {
+  function wait() {
+    if (window.__THREE_LOADING_DONE__) r(!window.__THREE_LOAD_FAILED__);
+    else setTimeout(wait, 100);
+  }
+  wait();
+});
+
+addEventListener('DOMContentLoaded', () => {
+  console.log('[Boot] DOM 已就绪，开始初始化...');
+  console.log('[Boot] THREE 是否存在:', !!window.THREE);
+  console.log('[Boot] __THREE_LOADING_DONE__:', window.__THREE_LOADING_DONE__);
+  console.log('[Boot] __THREE_LOAD_FAILED__:', window.__THREE_LOAD_FAILED__);
+  
+  const boot = () => {
+    console.log('[Boot] boot() 被调用');
+    console.log('[Boot] THREE 是否存在:', !!window.THREE);
+    console.log('[Boot] THREE.REVISION:', window.THREE ? window.THREE.REVISION : 'N/A');
+    console.log('[Boot] __THREE_LOADING_DONE__:', window.__THREE_LOADING_DONE__);
+    console.log('[Boot] __THREE_LOAD_FAILED__:', window.__THREE_LOAD_FAILED__);
+    
+    if (window.__THREE_LOAD_FAILED__ || !window.THREE) {
+      console.error('[Boot] Three.js 未加载，显示错误提示');
+      dom.errorBox.style.display = 'block';
+      dom.errorBox.innerHTML = '<strong>Three.js 加载失败，请检查网络连接。</strong><br>尝试了 cdnjs、jsDelivr、unpkg，均失败。<br><br>请刷新页面重试，或检查浏览器控制台获取更多信息。';
+      // 即使 Three.js 失败，也尝试初始化 2D 兜底模式
+      console.log('[Boot] 尝试初始化 2D 兜底模式...');
+      initFallback2DMode();
+    } else {
+      console.log('[Boot] 开始调用 initThreeGame()');
+      initThreeGame();
+    }
+  };
+  
+  // 始终使用 Promise 来确保 Three.js 完全加载
+  if (window.__THREE_LOADING_DONE__) {
+    boot();
+  } else {
+    console.log('[Boot] 等待 Three.js 加载...');
+    window.__THREE_LOADING_PROMISE__.then(success => {
+      console.log('[Boot] Three.js 加载 Promise 解析:', success ? '成功' : '失败');
+      boot();
+    });
+  }
+});
+</script>
+</body>
+</html>

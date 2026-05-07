@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>涂鸦特工 - 体感版</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; background: #0a0a0a; font-family: 'Segoe UI', sans-serif; }
+        #game-container { width: 100vw; height: 100vh; position: relative; }
+        #three-canvas { width: 100%; height: 100%; display: block; }
+        
+        /* 开始界面 */
+        #start-screen {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.95);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 100;
+        }
+        #start-screen h1 { color: #00ff88; font-size: 52px; text-shadow: 0 0 30px #00ff88; margin-bottom: 10px; }
+        #start-screen h2 { color: #ffcc00; font-size: 20px; margin-bottom: 30px; }
+        .gesture-guide { display: flex; gap: 25px; margin-bottom: 30px; }
+        .guide-item { background: rgba(0,204,255,0.1); border: 2px solid #00ccff; border-radius: 15px; padding: 20px; text-align: center; width: 130px; }
+        .guide-item .icon { font-size: 45px; }
+        .guide-item .label { color: #fff; margin-top: 10px; font-size: 14px; }
+        .guide-item .desc { color: #888; font-size: 11px; margin-top: 5px; }
+        
+        #camera-box {
+            width: 320px; height: 240px;
+            background: #111; border: 3px solid #00ff88;
+            border-radius: 15px; overflow: hidden; margin: 20px 0;
+        }
+        #camera-box video { width: 100%; height: 100%; transform: scaleX(-1); object-fit: cover; }
+        #camera-box canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); }
+        
+        #status-text { color: #ffcc00; font-size: 18px; margin-top: 15px; }
+        #gesture-show { color: #fff; font-size: 16px; margin-top: 10px; min-height: 24px; }
+        #error-tip { color: #ff4444; font-size: 14px; margin-top: 15px; display: none; }
+        
+        /* 游戏界面 */
+        #status-bar {
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.85); border: 2px solid #00ff88; border-radius: 25px;
+            padding: 10px 30px; display: none; gap: 30px; color: white; font-size: 16px;
+        }
+        .stat-item { display: flex; align-items: center; gap: 8px; }
+        .stat-label { color: #888; }
+        .stat-value { color: #00ff88; font-weight: bold; }
+        
+        /* 迷你地图 */
+        #minimap {
+            position: absolute; top: 60px; left: 20px;
+            width: 200px; background: rgba(0,0,0,0.85); border: 2px solid #00ff88;
+            border-radius: 10px; padding: 10px; display: none;
+        }
+        #minimap-title { color: #00ff88; font-size: 13px; text-align: center; margin-bottom: 5px; }
+        #minimap-canvas { width: 180px; height: 320px; background: #111; border-radius: 5px; }
+        #collect-info { color: #ff6b35; font-size: 12px; text-align: center; margin-top: 8px; }
+        
+        /* 手势面板 */
+        #gesture-panel {
+            position: absolute; bottom: 20px; left: 20px;
+            background: rgba(0,0,0,0.85); border: 2px solid #00ccff; border-radius: 12px;
+            padding: 15px; color: white; min-width: 160px; display: none;
+        }
+        #gesture-icon-big { font-size: 50px; text-align: center; }
+        #gesture-text { color: #888; font-size: 12px; text-align: center; margin-top: 8px; }
+        
+        /* 操作提示 */
+        #control-hint {
+            position: absolute; top: 60px; right: 20px;
+            background: rgba(0,0,0,0.85); border: 2px solid #ff6b35; border-radius: 10px;
+            padding: 15px; color: white; font-size: 13px; display: none;
+        }
+        #control-hint h4 { color: #ff6b35; margin-bottom: 8px; }
+        .hint-line { margin: 4px 0; color: #ccc; }
+        
+        /* 摄像头画面 */
+        #camera-view {
+            position: absolute; bottom: 20px; right: 20px;
+            width: 160px; background: rgba(0,0,0,0.85); border: 2px solid #ff00ff;
+            border-radius: 10px; overflow: hidden; display: none;
+        }
+        #camera-view video { width: 160px; height: 120px; transform: scaleX(-1); object-fit: cover; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="three-canvas"></canvas>
+        
+        <!-- 开始界面 -->
+        <div id="start-screen">
+            <h1>🎨 涂鸦特工</h1>
+            <h2>体感控制版</h2>
+            
+            <div class="gesture-guide">
+                <div class="guide-item">
+                    <div class="icon">👈</div>
+                    <div class="label">向左挥</div>
+                    <div class="desc">进入左岔路</div>
+                </div>
+                <div class="guide-item">
+                    <div class="icon">👉</div>
+                    <div class="label">向右挥</div>
+                    <div class="desc">进入右岔路</div>
+                </div>
+                <div class="guide-item">
+                    <div class="icon">✊</div>
+                    <div class="label">攥拳</div>
+                    <div class="desc">刹车停止</div>
+                </div>
+            </div>
+            
+            <div id="camera-box">
+                <video id="webcam" autoplay playsinline muted></video>
+            </div>
+            
+            <div id="status-text">📷 正在启动摄像头...</div>
+            <div id="gesture-show"></div>
+            <div id="error-tip"></div>
+        </div>
+        
+        <!-- 游戏界面 -->
+        <div id="status-bar">
+            <div class="stat-item"><span class="stat-label">收集:</span><span class="stat-value" id="score">0</span></div>
+            <div class="stat-item"><span class="stat-label">速度:</span><span class="stat-value" id="speed">0</span></div>
+            <div class="stat-item"><span class="stat-label">位置:</span><span class="stat-value" id="pos">0,0</span></div>
+        </div>
+        
+        <div id="minimap">
+            <div id="minimap-title">🗺️ 道路地图</div>
+            <canvas id="minimap-canvas"></canvas>
+            <div id="collect-info">🎨 <span id="can-count">0/0</span></div>
+        </div>
+        
+        <div id="gesture-panel">
+            <div id="gesture-icon-big">🤚</div>
+            <div id="gesture-text">等待手势...</div>
+        </div>
+        
+        <div id="control-hint">
+            <h4>🎮 操作说明</h4>
+            <div class="hint-line">👈 向左挥: 左转</div>
+            <div class="hint-line">👉 向右挥: 右转</div>
+            <div class="hint-line">✊ 攥拳: 刹车</div>
+            <div class="hint-line" style="color:#ffcc00;margin-top:10px;">💡 看地图找喷罐!</div>
+        </div>
+        
+        <div id="camera-view">
+            <video id="webcam-game" autoplay playsinline muted></video>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1640029074/camera_utils.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+    (function() {
+        // ============ 游戏状态 ============
+        const state = {
+            started: false,
+            score: 0,
+            playerZ: 80,
+            playerX: 0,
+            speed: 0,
+            lastGesture: 0
+        };
+        
+        // ============ 道路数据 ============
+        const intersections = [
+            {z: 55}, {z: 30}, {z: 5}, {z: -20}, {z: -45}, {z: -70}
+        ];
+        
+        const sprayCans = [
+            // 主路
+            {x:0, z:70}, {x:0, z:45}, {x:0, z:20}, {x:0, z:-5}, {x:0, z:-30},
+            {x:0, z:-55}, {x:0, z:-80}, {x:0, z:-100},
+            // 左岔路
+            {x:-10, z:65}, {x:-10, z:40}, {x:-10, z:15}, {x:-10, z:-10},
+            {x:-10, z:-35}, {x:-10, z:-60}, {x:-10, z:-85},
+            // 右岔路
+            {x:10, z:60}, {x:10, z:35}, {x:10, z:10}, {x:10, z:-15},
+            {x:10, z:-40}, {x:10, z:-65}, {x:10, z:-90}
+        ];
+        
+        // ============ Three.js 初始化 ============
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a15);
+        scene.fog = new THREE.Fog(0x0a0a15, 20, 120);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
+        camera.position.set(0, 6, 85);
+        
+        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('three-canvas'), antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        
+        // 灯光
+        scene.add(new THREE.AmbientLight(0x404060, 0.5));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(10, 20, 10);
+        scene.add(dirLight);
+        
+        // ============ 创建道路 ============
+        const roadMat = new THREE.MeshLambertMaterial({color: 0x222233});
+        const lineMat = new THREE.MeshBasicMaterial({color: 0xffff00});
+        const wallMat = new THREE.MeshLambertMaterial({color: 0x1a1a2e});
+        
+        // 主路
+        function createMainRoad() {
+            const road = new THREE.Mesh(new THREE.PlaneGeometry(10, 200), roadMat);
+            road.rotation.x = -Math.PI / 2;
+            road.position.set(0, -0.01, -20);
+            scene.add(road);
+            
+            const line = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 200), lineMat);
+            line.rotation.x = -Math.PI / 2;
+            line.position.set(0, 0.01, -20);
+            scene.add(line);
+            
+            // 墙壁
+            const wallGeo = new THREE.BoxGeometry(0.5, 5, 200);
+            [-5.25, 5.25].forEach(x => {
+                const wall = new THREE.Mesh(wallGeo, wallMat);
+                wall.position.set(x, 2.5, -20);
+                scene.add(wall);
+            });
+        }
+        
+        // 岔路
+        function createBranchRoads() {
+            const branchMat = new THREE.MeshLambertMaterial({color: 0x1a1a2a});
+            
+            intersections.forEach(int => {
+                [-1, 1].forEach(side => {
+                    const x = side * 10;
+                    
+                    // 岔路
+                    const road = new THREE.Mesh(new THREE.PlaneGeometry(5, 40), branchMat);
+                    road.rotation.x = -Math.PI / 2;
+                    road.position.set(x, -0.01, int.z - 20);
+                    scene.add(road);
+                    
+                    // 岔路连接
+                    const conn = new THREE.Mesh(new THREE.PlaneGeometry(3, 5), branchMat);
+                    conn.rotation.x = -Math.PI / 2;
+                    conn.position.set(side * 5, -0.01, int.z - 20);
+                    scene.add(conn);
+                    
+                    // 岔路墙壁
+                    const wallGeo = new THREE.BoxGeometry(0.4, 4, 40);
+                    const wall = new THREE.Mesh(wallGeo, wallMat);
+                    wall.position.set(x + side * 2.5, 2, int.z - 20);
+                    scene.add(wall);
+                });
+            });
+        }
+        
+        // ============ 创建喷漆罐 ============
+        const sprayMeshes = [];
+        function createSprayCans() {
+            const colors = [0xff6b35, 0x00ff88, 0x00ccff, 0xff00ff, 0xffff00];
+            
+            sprayCans.forEach((can, i) => {
+                const color = colors[i % colors.length];
+                const group = new THREE.Group();
+                
+                // 罐身
+                const body = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.3, 0.3, 0.8, 16),
+                    new THREE.MeshLambertMaterial({color})
+                );
+                group.add(body);
+                
+                // 发光
+                const glow = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.5, 16, 16),
+                    new THREE.MeshBasicMaterial({color, transparent: true, opacity: 0.25})
+                );
+                group.add(glow);
+                
+                group.position.set(can.x, 0.6, can.z);
+                group.userData = {collected: false, index: i};
+                scene.add(group);
+                sprayMeshes.push(group);
+            });
+        }
+        
+        // ============ 创建玩家 ============
+        const player = new THREE.Group();
+        function createPlayer() {
+            // 身体
+            const body = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.35, 0.3, 1.2, 16),
+                new THREE.MeshLambertMaterial({color: 0x00ccff})
+            );
+            body.position.y = 0.7;
+            player.add(body);
+            
+            // 头
+            const head = new THREE.Mesh(
+                new THREE.SphereGeometry(0.28, 16, 16),
+                new THREE.MeshLambertMaterial({color: 0xffcc99})
+            );
+            head.position.y = 1.6;
+            player.add(head);
+            
+            // 背包
+            const pack = new THREE.Mesh(
+                new THREE.BoxGeometry(0.5, 0.7, 0.25),
+                new THREE.MeshLambertMaterial({color: 0x333344})
+            );
+            pack.position.set(0, 0.8, -0.25);
+            player.add(pack);
+            
+            player.position.set(0, 0, 80);
+            scene.add(player);
+        }
+        
+        createMainRoad();
+        createBranchRoads();
+        createSprayCans();
+        createPlayer();
+        
+        // ============ 迷你地图 ============
+        const minimapCanvas = document.getElementById('minimap-canvas');
+        minimapCanvas.width = 180;
+        minimapCanvas.height = 320;
+        const mctx = minimapCanvas.getContext('2d');
+        
+        function drawMinimap() {
+            mctx.fillStyle = '#111';
+            mctx.fillRect(0, 0, 180, 320);
+            
+            const scale = 1.2;
+            const cx = 90, cy = 80;
+            
+            // 主路
+            mctx.strokeStyle = '#444';
+            mctx.lineWidth = 10;
+            mctx.beginPath();
+            mctx.moveTo(cx, cy);
+            mctx.lineTo(cx, cy + 250 * scale);
+            mctx.stroke();
+            
+            // 岔路
+            intersections.forEach(int => {
+                const y = cy + (int.z - 80) * scale;
+                mctx.lineWidth = 5;
+                
+                mctx.beginPath();
+                mctx.moveTo(cx, y);
+                mctx.lineTo(cx - 30, y + 25);
+                mctx.stroke();
+                
+                mctx.beginPath();
+                mctx.moveTo(cx, y);
+                mctx.lineTo(cx + 30, y + 25);
+                mctx.stroke();
+            });
+            
+            // 喷漆罐
+            sprayCans.forEach((can, i) => {
+                if (!sprayMeshes[i].userData.collected) {
+                    const x = cx + can.x * scale;
+                    const y = cy + (can.z - 80) * scale;
+                    mctx.fillStyle = '#ff6b35';
+                    mctx.beginPath();
+                    mctx.arc(x, y, 4, 0, Math.PI * 2);
+                    mctx.fill();
+                }
+            });
+            
+            // 玩家
+            const px = cx + state.playerX * scale;
+            const py = cy + (state.playerZ - 80) * scale;
+            mctx.fillStyle = '#00ff88';
+            mctx.beginPath();
+            mctx.arc(px, py, 5, 0, Math.PI * 2);
+            mctx.fill();
+        }
+        
+        // ============ 手势检测 ============
+        let lastHandX = null, lastHandY = null;
+        let fistStartTime = null;
+        let gestureDetected = 0;
+        
+        async function initHandTracking() {
+            const video = document.getElementById('webcam');
+            const statusText = document.getElementById('status-text');
+            const gestureShow = document.getElementById('gesture-show');
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({video: {width: 320, height: 240}});
+                video.srcObject = stream;
+                
+                statusText.textContent = '✅ 摄像头已启动，请在镜头前挥手开始游戏';
+                gestureShow.textContent = '👋 检测手势中...';
+                
+                const hands = new Hands({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${f}`});
+                hands.setOptions({maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.5});
+                
+                hands.onResults((results) => {
+                    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                        const lm = results.multiHandLandmarks[0];
+                        const wrist = lm[0];
+                        const thumb = lm[4], index = lm[8], middle = lm[12], ring = lm[16], pinky = lm[20];
+                        
+                        const hx = wrist.x, hy = wrist.y;
+                        
+                        // 攥拳检测
+                        const dist = [
+                            Math.hypot(index.x - thumb.x, index.y - thumb.y),
+                            Math.hypot(middle.x - thumb.x, middle.y - thumb.y),
+                            Math.hypot(ring.x - thumb.x, ring.y - thumb.y),
+                            Math.hypot(pinky.x - thumb.x, pinky.y - thumb.y)
+                        ];
+                        const isFist = dist.every(d => d < 0.07);
+                        
+                        if (isFist) {
+                            if (fistStartTime === null) fistStartTime = Date.now();
+                            if (Date.now() - fistStartTime > 150) {
+                                gestureShow.textContent = '✊ 攥拳';
+                                if (state.started) state.speed *= 0.1;
+                            }
+                        } else {
+                            fistStartTime = null;
+                            
+                            if (!state.started && lastHandX !== null) {
+                                const dx = hx - lastHandX;
+                                const dy = hy - lastHandY;
+                                
+                                if (Math.abs(dx) > 0.025 || Math.abs(dy) > 0.025) {
+                                    gestureDetected++;
+                                    gestureShow.textContent = '👋 挥动检测 ' + gestureDetected + '/2';
+                                    if (gestureDetected >= 2) startGame();
+                                }
+                            } else if (state.started && lastHandX !== null) {
+                                const dx = hx - lastHandX;
+                                const now = Date.now();
+                                
+                                if (now - state.lastGesture > 400) {
+                                    // 左挥
+                                    if (dx < -0.03) {
+                                        const nearInt = intersections.find(i => Math.abs(state.playerZ - i.z) < 12);
+                                        if (nearInt) {
+                                            state.playerX = -10;
+                                            gestureShow.textContent = '👈 左转!';
+                                            document.getElementById('gesture-icon-big').textContent = '👈';
+                                            document.getElementById('gesture-text').textContent = '左转进入岔路';
+                                        } else {
+                                            gestureShow.textContent = '👈 左转(需到路口)';
+                                        }
+                                        state.lastGesture = now;
+                                    }
+                                    // 右挥
+                                    else if (dx > 0.03) {
+                                        const nearInt = intersections.find(i => Math.abs(state.playerZ - i.z) < 12);
+                                        if (nearInt) {
+                                            state.playerX = 10;
+                                            gestureShow.textContent = '👉 右转!';
+                                            document.getElementById('gesture-icon-big').textContent = '👉';
+                                            document.getElementById('gesture-text').textContent = '右转进入岔路';
+                                        } else {
+                                            gestureShow.textContent = '👉 右转(需到路口)';
+                                        }
+                                        state.lastGesture = now;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        lastHandX = hx;
+                        lastHandY = hy;
+                    } else {
+                        lastHandX = null;
+                        lastHandY = null;
+                        fistStartTime = null;
+                    }
+                });
+                
+                new Camera(video, {
+                    onFrame: async () => { await hands.send({image: video}); },
+                    width: 320, height: 240
+                }).start();
+                
+            } catch (err) {
+                console.error(err);
+                statusText.textContent = '❌ 摄像头启动失败';
+                document.getElementById('error-tip').textContent = '错误: ' + err.message;
+                document.getElementById('error-tip').style.display = 'block';
+            }
+        }
+        
+        // ============ 开始游戏 ============
+        function startGame() {
+            if (state.started) return;
+            state.started = true;
+            state.speed = 5;
+            
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('status-bar').style.display = 'flex';
+            document.getElementById('minimap').style.display = 'block';
+            document.getElementById('gesture-panel').style.display = 'block';
+            document.getElementById('control-hint').style.display = 'block';
+            document.getElementById('camera-view').style.display = 'block';
+            
+            // 共享摄像头
+            const gameVideo = document.getElementById('webcam-game');
+            const startVideo = document.getElementById('webcam');
+            if (startVideo.srcObject) {
+                gameVideo.srcObject = startVideo.srcObject;
+            }
+        }
+        
+        // 点击开始
+        document.getElementById('start-screen').addEventListener('click', startGame);
+        document.addEventListener('keydown', startGame);
+        
+        // ============ 游戏循环 ============
+        function gameLoop() {
+            if (state.started) {
+                state.playerZ -= state.speed * 0.04;
+                
+                // 限制X
+                const onBranch = Math.abs(state.playerX) > 5;
+                if (onBranch) {
+                    state.playerX = Math.max(-12, Math.min(12, state.playerX));
+                } else {
+                    state.playerX = Math.max(-5, Math.min(5, state.playerX));
+                }
+                
+                player.position.x = state.playerX;
+                player.position.z = state.playerZ;
+                
+                // 相机跟随
+                camera.position.x = state.playerX * 0.3;
+                camera.position.z = state.playerZ + 8;
+                camera.lookAt(state.playerX, 2, state.playerZ - 10);
+                
+                // 收集检测
+                sprayMeshes.forEach((mesh, i) => {
+                    if (!mesh.userData.collected) {
+                        const d = Math.hypot(state.playerX - sprayCans[i].x, state.playerZ - sprayCans[i].z);
+                        if (d < 1.5) {
+                            mesh.userData.collected = true;
+                            mesh.visible = false;
+                            state.score++;
+                            document.getElementById('score').textContent = state.score;
+                            createExplosion(sprayCans[i].x, 0.5, sprayCans[i].z);
+                        }
+                    }
+                    mesh.rotation.y += 0.03;
+                    mesh.position.y = 0.6 + Math.sin(Date.now() * 0.003 + i) * 0.1;
+                });
+                
+                document.getElementById('speed').textContent = state.speed.toFixed(1);
+                document.getElementById('pos').textContent = state.playerX.toFixed(0) + ',' + state.playerZ.toFixed(0);
+                document.getElementById('can-count').textContent = state.score + '/' + sprayCans.length;
+                
+                drawMinimap();
+                state.speed = Math.max(0, state.speed - 0.02);
+            }
+            
+            renderer.render(scene, camera);
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // ============ 爆炸特效 ============
+        function createExplosion(x, y, z) {
+            const colors = [0xff6b35, 0x00ff88, 0x00ccff, 0xff00ff];
+            const particles = [];
+            
+            for (let i = 0; i < 15; i++) {
+                const p = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.1),
+                    new THREE.MeshBasicMaterial({color: colors[Math.floor(Math.random() * 4)]})
+                );
+                p.position.set(x, y, z);
+                p.userData.v = new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.25,
+                    Math.random() * 0.15,
+                    (Math.random() - 0.5) * 0.25
+                );
+                p.userData.life = 50;
+                scene.add(p);
+                particles.push(p);
+            }
+            
+            function anim() {
+                particles.forEach((p, i) => {
+                    p.position.add(p.userData.v);
+                    p.userData.v.y -= 0.008;
+                    p.userData.life--;
+                    if (p.userData.life <= 0) { scene.remove(p); particles.splice(i, 1); }
+                });
+                if (particles.length) requestAnimationFrame(anim);
+            }
+            anim();
+        }
+        
+        // ============ 启动 ============
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        initHandTracking();
+        gameLoop();
+    })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>涂鸦特工 - 街道版 v2</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #1a1a2e;
+            overflow: hidden;
+            font-family: 'Microsoft YaHei', sans-serif;
+        }
+        
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #minimap {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 180px;
+            height: 240px;
+            background: rgba(0,0,0,0.8);
+            border: 2px solid #00d4ff;
+            border-radius: 10px;
+        }
+        
+        #ui {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #fff;
+            font-size: 16px;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border-radius: 10px;
+            min-width: 150px;
+        }
+        
+        #ui h3 {
+            color: #00d4ff;
+            margin-bottom: 10px;
+        }
+        
+        #ui div {
+            margin: 5px 0;
+        }
+        
+        #score {
+            color: #ff0;
+            font-size: 24px;
+        }
+        
+        #gesture {
+            position: absolute;
+            bottom: 30px;
+            right: 30px;
+            width: 100px;
+            height: 100px;
+            background: rgba(0,0,0,0.8);
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 50px;
+            border: 2px solid #00d4ff;
+        }
+        
+        #gestureText {
+            position: absolute;
+            bottom: 10px;
+            font-size: 14px;
+            color: #00d4ff;
+        }
+        
+        #startScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            z-index: 100;
+        }
+        
+        #startScreen h1 {
+            font-size: 48px;
+            color: #00d4ff;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px #00d4ff;
+        }
+        
+        #startScreen p {
+            font-size: 18px;
+            margin: 10px;
+            color: #ccc;
+        }
+        
+        #startScreen .key {
+            color: #ff0;
+            font-weight: bold;
+        }
+        
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.7);
+            padding: 10px 20px;
+            border-radius: 20px;
+            color: #fff;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <canvas id="minimap"></canvas>
+    
+    <div id="ui">
+        <h3>📊 状态</h3>
+        <div>收集: <span id="score">0</span> / <span id="totalCans">0</span></div>
+        <div>速度: <span id="speed">0</span></div>
+        <div>距离终点: <span id="distance">0</span>m</div>
+    </div>
+    
+    <div id="gesture">
+        <span id="gestureIcon">✋</span>
+        <div id="gestureText">准备</div>
+    </div>
+    
+    <div id="controls">
+        👈 向左挥/向右挥 👉 转向 | 🖐️ 向上挥加速 | ✊ 攥拳刹车
+    </div>
+    
+    <div id="startScreen">
+        <h1>🛹 涂鸦特工</h1>
+        <p>按 <span class="key">任意键</span> 或 <span class="key">点击</span> 开始游戏</p>
+        <p>🎮 键盘: <span class="key">W</span>前进 <span class="key">A</span>左转 <span class="key">D</span>右转 <span class="key">空格</span>刹车</p>
+        <p>🎯 收集喷漆罐，避开障碍墙，到达终点！</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const minimap = document.getElementById('minimap');
+        const minimapCtx = minimap.getContext('2d');
+        
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        minimap.width = 180;
+        minimap.height = 240;
+        
+        // ============ 游戏状态 ============
+        const state = {
+            started: false,
+            gameOver: false,
+            score: 0,
+            playerX: 0,
+            playerY: 2,
+            playerZ: 100,      // 玩家在道路尽头（屏幕下方）
+            playerDir: 0,      // 0度 = 朝向 -Z 方向（向上/向前）
+            playerSpeed: 0,
+            maxSpeed: 8,
+            cameraAngle: 0
+        };
+        
+        const keys = {};
+        
+        // ============ 道路系统 - 十字路口布局 ============
+        const ROAD_WIDTH = 80;      // 道路宽度 - 更宽！
+        const ROAD_LENGTH = 200;    // 每段路长度
+        const VIEW_DISTANCE = 500;  // 视野距离
+        
+        // 道路节点 - 十字路口模式
+        const roadNodes = [];
+        const roadEdges = [];
+        const walls = [];
+        const sprayCans = [];
+        let goalNode = null;
+        
+        function createRoadNetwork() {
+            // 玩家从 Z=100 出发，道路向 -Z 方向延伸
+            // 玩家在道路尽头（屏幕下方）
+            
+            // 起点区域 (z = 0-100) - 三条路从这里分叉
+            roadNodes.push({ id: 0, x: 0, z: 0, type: 'start' });      // 中央起点
+            
+            // 第一层分叉 (z = -200)
+            roadNodes.push({ id: 1, x: -150, z: -200, type: 'junction' });  // 左
+            roadNodes.push({ id: 2, x: 0, z: -200, type: 'junction' });     // 中
+            roadNodes.push({ id: 3, x: 150, z: -200, type: 'junction' });   // 右
+            
+            // 第二层 (z = -400)
+            roadNodes.push({ id: 4, x: -150, z: -400, type: 'junction' });
+            roadNodes.push({ id: 5, x: 0, z: -400, type: 'junction' });
+            roadNodes.push({ id: 6, x: 150, z: -400, type: 'junction' });
+            
+            // 第三层 (z = -600)
+            roadNodes.push({ id: 7, x: -150, z: -600, type: 'junction' });
+            roadNodes.push({ id: 8, x: 0, z: -600, type: 'junction' });
+            roadNodes.push({ id: 9, x: 150, z: -600, type: 'junction' });
+            
+            // 终点汇聚 (z = -800)
+            roadNodes.push({ id: 10, x: 0, z: -800, type: 'goal' });
+            goalNode = roadNodes[10];
+            
+            // 道路连接 - 从中央起点分出三条路
+            roadEdges.push({ from: 0, to: 1 });  // 中央到左
+            roadEdges.push({ from: 0, to: 2 });  // 中央到中
+            roadEdges.push({ from: 0, to: 3 });  // 中央到右
+            
+            // 第一层到第二层
+            roadEdges.push({ from: 1, to: 4 }, { from: 1, to: 5 });
+            roadEdges.push({ from: 2, to: 4 }, { from: 2, to: 5 }, { from: 2, to: 6 });
+            roadEdges.push({ from: 3, to: 5 }, { from: 3, to: 6 });
+            
+            // 第二层到第三层
+            roadEdges.push({ from: 4, to: 7 }, { from: 4, to: 8 });
+            roadEdges.push({ from: 5, to: 7 }, { from: 5, to: 8 }, { from: 5, to: 9 });
+            roadEdges.push({ from: 6, to: 8 }, { from: 6, to: 9 });
+            
+            // 第三层到终点
+            roadEdges.push({ from: 7, to: 10 }, { from: 8, to: 10 }, { from: 9, to: 10 });
+            
+            // 环路连接
+            roadEdges.push({ from: 4, to: 2 }, { from: 6, to: 2 });
+            roadEdges.push({ from: 7, to: 5 }, { from: 9, to: 5 });
+            
+            // 障碍墙 - 放在分叉路口，只挡一条路
+            walls.push({ x: -75, z: 0, width: 60, height: 20, active: true });    // 左路起点有墙
+            walls.push({ x: 75, z: -200, width: 60, height: 20, active: true });   // 第二层右路有墙
+            walls.push({ x: -75, z: -400, width: 60, height: 20, active: true });  // 第三层左路有墙
+            
+            // 喷漆罐 - 分散在道路上
+            const canPositions = [
+                { x: -75, z: -100 },   // 左路
+                { x: 0, z: -100 },     // 中路
+                { x: 75, z: -100 },    // 右路
+                { x: -75, z: -300 },   // 左路
+                { x: 0, z: -300 },     // 中路
+                { x: 75, z: -300 },    // 右路
+                { x: -75, z: -500 },   // 左路
+                { x: 0, z: -500 },     // 中路
+                { x: 75, z: -500 },    // 右路
+                { x: -75, z: -700 },   // 左路
+                { x: 0, z: -700 },     // 中路（终点前）
+                { x: 75, z: -700 },    // 右路
+            ];
+            
+            const colors = ['#ff0', '#f0f', '#0ff', '#f80', '#0f0', '#f00'];
+            canPositions.forEach((pos, i) => {
+                sprayCans.push({
+                    x: pos.x + (Math.random() - 0.5) * 20,
+                    z: pos.z,
+                    collected: false,
+                    color: colors[i % colors.length]
+                });
+            });
+        }
+        
+        // ============ 2.5D渲染系统 ============
+        function project(x, z) {
+            // 相对玩家的位置
+            const relX = x - state.playerX;
+            const relZ = z - state.playerZ;
+            
+            // 旋转到玩家视角
+            const cosDir = Math.cos(-state.playerDir);
+            const sinDir = Math.sin(-state.playerDir);
+            
+            const rotX = relX * cosDir - relZ * sinDir;
+            const rotZ = relX * sinDir + relZ * cosDir;
+            
+            // 只显示前方的物体
+            if (rotZ > -10) return null;
+            
+            // 透视投影
+            const fov = 600;
+            const scale = fov / (-rotZ);
+            
+            const screenX = canvas.width / 2 + rotX * scale;
+            const screenY = canvas.height * 0.7 + 100 * scale;
+            
+            return { x: screenX, y: screenY, scale: scale, depth: -rotZ };
+        }
+        
+        function drawRoadSegment(from, to) {
+            const p1 = project(from.x - ROAD_WIDTH/2, from.z);
+            const p2 = project(from.x + ROAD_WIDTH/2, from.z);
+            const p3 = project(to.x + ROAD_WIDTH/2, to.z);
+            const p4 = project(to.x - ROAD_WIDTH/2, to.z);
+            
+            if (!p1 || !p2 || !p3 || !p4) return;
+            
+            // 道路主体
+            ctx.fillStyle = '#333';
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.lineTo(p3.x, p3.y);
+            ctx.lineTo(p4.x, p4.y);
+            ctx.closePath();
+            ctx.fill();
+            
+            // 道路边框
+            ctx.strokeStyle = '#00d4ff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // 中线
+            const mid1 = project(from.x, from.z);
+            const mid2 = project(to.x, to.z);
+            if (mid1 && mid2) {
+                ctx.strokeStyle = '#fff';
+                ctx.setLineDash([10, 10]);
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(mid1.x, mid1.y);
+                ctx.lineTo(mid2.x, mid2.y);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+        
+        function drawWall(wall) {
+            if (!wall.active) return;
+            
+            const p = project(wall.x, wall.z);
+            if (!p) return;
+            
+            const w = wall.width * p.scale;
+            const h = wall.height * p.scale;
+            
+            // 墙体
+            ctx.fillStyle = '#f00';
+            ctx.strokeStyle = '#800';
+            ctx.lineWidth = 2;
+            
+            ctx.fillRect(p.x - w/2, p.y - h, w, h);
+            ctx.strokeRect(p.x - w/2, p.y - h, w, h);
+            
+            // 警告条纹
+            ctx.strokeStyle = '#ff0';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            for (let i = -w/2; i < w/2; i += 15) {
+                ctx.moveTo(p.x + i, p.y - h);
+                ctx.lineTo(p.x + i + 10, p.y);
+            }
+            ctx.stroke();
+            
+            // 文字
+            ctx.fillStyle = '#fff';
+            ctx.font = `bold ${Math.max(12, 16 * p.scale)}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.fillText('墙', p.x, p.y - h/2);
+        }
+        
+        function drawSprayCan(can) {
+            if (can.collected) return;
+            
+            const p = project(can.x, can.z);
+            if (!p) return;
+            
+            const size = Math.max(8, 15 * p.scale);
+            
+            // 发光效果
+            ctx.shadowColor = can.color;
+            ctx.shadowBlur = 20;
+            
+            // 喷罐主体
+            ctx.fillStyle = can.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y - size, size, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 罐身
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(p.x - size*0.3, p.y - size*1.5, size*0.6, size);
+            
+            ctx.shadowBlur = 0;
+        }
+        
+        function drawGoal() {
+            const p = project(goalNode.x, goalNode.z);
+            if (!p) return;
+            
+            const size = Math.max(20, 40 * p.scale);
+            
+            // 终点标志
+            ctx.fillStyle = '#0f0';
+            ctx.shadowColor = '#0f0';
+            ctx.shadowBlur = 30;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y - size/2, size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            
+            // 方格旗
+            ctx.fillStyle = '#fff';
+            for (let i = 0; i < 4; i++) {
+                for (let j = 0; j < 4; j++) {
+                    if ((i + j) % 2 === 0) {
+                        ctx.fillRect(p.x - size*0.4 + i*size*0.2, p.y - size - j*size*0.15, size*0.2, size*0.15);
+                    }
+                }
+            }
+            
+            ctx.fillStyle = '#fff';
+            ctx.font = `bold ${Math.max(14, 20 * p.scale)}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.fillText('终点', p.x, p.y + size);
+        }
+        
+        function drawPlayer() {
+            // 玩家在屏幕底部中央
+            const cx = canvas.width / 2;
+            const cy = canvas.height * 0.85;
+            
+            // 滑板
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(cx - 30, cy - 5, 60, 10);
+            
+            // 轮子
+            ctx.fillStyle = '#333';
+            ctx.beginPath();
+            ctx.arc(cx - 20, cy + 5, 8, 0, Math.PI * 2);
+            ctx.arc(cx + 20, cy + 5, 8, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 角色
+            ctx.fillStyle = '#00ff88';
+            ctx.shadowColor = '#00ff88';
+            ctx.shadowBlur = 15;
+            ctx.beginPath();
+            ctx.arc(cx, cy - 20, 15, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            
+            // 方向指示
+            const arrowLen = 25;
+            const arrowX = cx + Math.sin(state.playerDir) * arrowLen;
+            const arrowY = cy - 20 - Math.cos(state.playerDir) * arrowLen;
+            
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - 20);
+            ctx.lineTo(arrowX, arrowY);
+            ctx.stroke();
+        }
+        
+        function drawScene() {
+            // 清空画布
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 天空渐变
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, '#0a0a1a');
+            gradient.addColorStop(0.5, '#1a1a3e');
+            gradient.addColorStop(1, '#2a2a4e');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 按深度排序所有物体
+            const objects = [];
+            
+            // 添加道路
+            roadEdges.forEach(edge => {
+                const from = roadNodes[edge.from];
+                const to = roadNodes[edge.to];
+                const midZ = (from.z + to.z) / 2;
+                objects.push({ type: 'road', from, to, z: midZ });
+            });
+            
+            // 添加喷罐
+            sprayCans.forEach(can => {
+                if (!can.collected) {
+                    objects.push({ type: 'can', can, z: can.z });
+                }
+            });
+            
+            // 添加墙
+            walls.forEach(wall => {
+                if (wall.active) {
+                    objects.push({ type: 'wall', wall, z: wall.z });
+                }
+            });
+            
+            // 添加终点
+            objects.push({ type: 'goal', z: goalNode.z });
+            
+            // 按Z深度排序（从远到近）
+            objects.sort((a, b) => a.z - b.z);
+            
+            // 绘制
+            objects.forEach(obj => {
+                switch(obj.type) {
+                    case 'road': drawRoadSegment(obj.from, obj.to); break;
+                    case 'can': drawSprayCan(obj.can); break;
+                    case 'wall': drawWall(obj.wall); break;
+                    case 'goal': drawGoal(); break;
+                }
+            });
+            
+            // 绘制玩家（始终在前景）
+            drawPlayer();
+        }
+        
+        // ============ 迷你地图 ============
+        function drawMinimap() {
+            minimapCtx.fillStyle = '#000';
+            minimapCtx.fillRect(0, 0, minimap.width, minimap.height);
+            
+            const scale = 0.15;
+            const offsetX = minimap.width / 2;
+            const offsetY = minimap.height - 30;
+            
+            // 绘制道路
+            minimapCtx.strokeStyle = '#444';
+            minimapCtx.lineWidth = 3;
+            roadEdges.forEach(edge => {
+                const from = roadNodes[edge.from];
+                const to = roadNodes[edge.to];
+                minimapCtx.beginPath();
+                minimapCtx.moveTo(offsetX + from.x * scale, offsetY + from.z * scale);
+                minimapCtx.lineTo(offsetX + to.x * scale, offsetY + to.z * scale);
+                minimapCtx.stroke();
+            });
+            
+            // 绘制墙
+            walls.forEach(wall => {
+                if (wall.active) {
+                    minimapCtx.fillStyle = '#f00';
+                    minimapCtx.fillRect(
+                        offsetX + (wall.x - wall.width/2) * scale,
+                        offsetY + wall.z * scale - 3,
+                        wall.width * scale,
+                        6
+                    );
+                }
+            });
+            
+            // 绘制喷罐
+            sprayCans.forEach(can => {
+                if (!can.collected) {
+                    minimapCtx.fillStyle = can.color;
+                    minimapCtx.beginPath();
+                    minimapCtx.arc(offsetX + can.x * scale, offsetY + can.z * scale, 3, 0, Math.PI * 2);
+                    minimapCtx.fill();
+                }
+            });
+            
+            // 绘制终点
+            minimapCtx.fillStyle = '#0f0';
+            minimapCtx.beginPath();
+            minimapCtx.arc(offsetX + goalNode.x * scale, offsetY + goalNode.z * scale, 5, 0, Math.PI * 2);
+            minimapCtx.fill();
+            
+            // 绘制玩家
+            minimapCtx.fillStyle = '#00ff88';
+            minimapCtx.beginPath();
+            minimapCtx.arc(offsetX + state.playerX * scale, offsetY + state.playerZ * scale, 5, 0, Math.PI * 2);
+            minimapCtx.fill();
+            
+            // 方向箭头
+            minimapCtx.strokeStyle = '#fff';
+            minimapCtx.lineWidth = 2;
+            minimapCtx.beginPath();
+            minimapCtx.moveTo(offsetX + state.playerX * scale, offsetY + state.playerZ * scale);
+            minimapCtx.lineTo(
+                offsetX + state.playerX * scale - Math.sin(state.playerDir) * 12,
+                offsetY + state.playerZ * scale - Math.cos(state.playerDir) * 12
+            );
+            minimapCtx.stroke();
+        }
+        
+        // ============ 碰撞检测 ============
+        function checkCollisions() {
+            // 喷罐收集
+            sprayCans.forEach(can => {
+                if (!can.collected) {
+                    const dx = state.playerX - can.x;
+                    const dz = state.playerZ - can.z;
+                    const dist = Math.sqrt(dx * dx + dz * dz);
+                    if (dist < 15) {
+                        can.collected = true;
+                        state.score++;
+                        updateUI();
+                    }
+                }
+            });
+            
+            // 墙碰撞
+            walls.forEach(wall => {
+                if (wall.active) {
+                    const dx = state.playerX - wall.x;
+                    const dz = state.playerZ - wall.z;
+                    if (Math.abs(dx) < wall.width/2 + 10 && Math.abs(dz) < 15) {
+                        // 撞墙 - 反弹并转向
+                        state.playerSpeed *= 0.5;
+                        if (state.playerX < wall.x) {
+                            state.playerDir -= 0.5;
+                        } else {
+                            state.playerDir += 0.5;
+                        }
+                        showGesture('🚧', '撞墙了！');
+                    }
+                }
+            });
+            
+            // 终点检测
+            const dx = state.playerX - goalNode.x;
+            const dz = state.playerZ - goalNode.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            if (dist < 30) {
+                state.gameOver = true;
+                showGesture('🏆', '到达终点！');
+            }
+        }
+        
+        // ============ UI更新 ============
+        function updateUI() {
+            document.getElementById('score').textContent = state.score;
+            document.getElementById('totalCans').textContent = sprayCans.length;
+            document.getElementById('speed').textContent = state.playerSpeed.toFixed(1);
+            const dist = Math.sqrt(
+                Math.pow(state.playerX - goalNode.x, 2) + 
+                Math.pow(state.playerZ - goalNode.z, 2)
+            );
+            document.getElementById('distance').textContent = Math.floor(dist);
+        }
+        
+        function showGesture(icon, text) {
+            document.getElementById('gestureIcon').textContent = icon;
+            document.getElementById('gestureText').textContent = text;
+            setTimeout(() => {
+                document.getElementById('gestureIcon').textContent = '✋';
+                document.getElementById('gestureText').textContent = '准备';
+            }, 1000);
+        }
+        
+        // ============ 游戏循环 ============
+        function gameLoop() {
+            if (state.started && !state.gameOver) {
+                // 转向控制
+                if (keys['ArrowLeft'] || keys['a'] || keys['A']) {
+                    state.playerDir -= 0.04;
+                    showGesture('👈', '左转');
+                }
+                if (keys['ArrowRight'] || keys['d'] || keys['D']) {
+                    state.playerDir += 0.04;
+                    showGesture('👉', '右转');
+                }
+                
+                // 加速
+                if (keys['ArrowUp'] || keys['w'] || keys['W']) {
+                    state.playerSpeed = Math.min(state.playerSpeed + 0.3, state.maxSpeed);
+                    showGesture('🖐️', '加速');
+                }
+                
+                // 刹车
+                if (keys[' ']) {
+                    state.playerSpeed *= 0.9;
+                    showGesture('✊', '刹车');
+                }
+                
+                // 移动
+                if (state.playerSpeed > 0.01) {
+                    state.playerX += Math.sin(state.playerDir) * state.playerSpeed;
+                    state.playerZ -= Math.cos(state.playerDir) * state.playerSpeed;
+                    state.playerSpeed *= 0.995;
+                    if (state.playerSpeed < 0.1) state.playerSpeed = 0;
+                }
+                
+                checkCollisions();
+            }
+            
+            drawScene();
+            drawMinimap();
+            updateUI();
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // ============ 输入处理 ============
+        window.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            
+            if (!state.started) {
+                state.started = true;
+                document.getElementById('startScreen').style.display = 'none';
+            }
+            
+            if (e.key === 'r' || e.key === 'R') {
+                resetGame();
+            }
+        });
+        
+        window.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+        
+        window.addEventListener('click', () => {
+            if (!state.started) {
+                state.started = true;
+                document.getElementById('startScreen').style.display = 'none';
+            }
+        });
+        
+        function resetGame() {
+            state.playerX = 0;
+            state.playerZ = 100;
+            state.playerDir = 0;
+            state.playerSpeed = 0;
+            state.score = 0;
+            state.gameOver = false;
+            sprayCans.forEach(can => can.collected = false);
+        }
+        
+        // ============ 初始化 ============
+        createRoadNetwork();
+        gameLoop();
+    </script>
+</body>
+</html>

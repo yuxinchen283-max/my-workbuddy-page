@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>涂鸦特工 - 体感3D Demo</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; background: #1a1a2e; font-family: 'Segoe UI', sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; }
+        
+        #ui-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 100;
+        }
+        .hud-element { position: absolute; color: white; text-shadow: 0 0 10px rgba(0,0,0,0.8); }
+        
+        #timer {
+            top: 20px; right: 20px; font-size: 28px; font-weight: bold;
+            background: rgba(0,0,0,0.6); padding: 10px 20px; border-radius: 10px;
+            border: 2px solid #ff6b6b;
+        }
+        
+        #controls-help {
+            top: 20px; left: 20px; background: rgba(0,0,0,0.7);
+            padding: 15px 20px; border-radius: 10px; font-size: 14px; line-height: 1.8;
+        }
+        #controls-help h3 { color: #ffd93d; margin-bottom: 8px; font-size: 16px; }
+        #controls-help kbd {
+            background: #333; padding: 2px 8px; border-radius: 4px;
+            border: 1px solid #555; color: #6bcbff;
+        }
+        
+        #color-inventory {
+            bottom: 20px; left: 20px; display: flex; gap: 15px;
+            background: rgba(0,0,0,0.6); padding: 15px 20px; border-radius: 10px;
+        }
+        .color-slot {
+            width: 50px; height: 50px; border-radius: 10px; border: 3px solid #444;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12px; font-weight: bold; transition: all 0.3s;
+        }
+        .color-slot.has-color { border-color: white; box-shadow: 0 0 15px currentColor; }
+        
+        #action-feedback {
+            top: 40%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 36px; font-weight: bold; opacity: 0;
+            background: rgba(0,0,0,0.7); padding: 15px 30px; border-radius: 15px;
+        }
+        #action-feedback.show { opacity: 1; animation: feedbackPop 0.5s ease-out; }
+        @keyframes feedbackPop {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+            50% { transform: translate(-50%, -50%) scale(1.2); }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        }
+        
+        #mini-map-container {
+            position: absolute; bottom: 20px; right: 20px;
+            background: rgba(0,0,0,0.8); padding: 10px; border-radius: 10px;
+            border: 2px solid #555;
+        }
+        #mini-map-container h4 {
+            color: #ffd93d; font-size: 12px; margin-bottom: 5px; text-align: center;
+        }
+        #mini-map { display: block; border-radius: 5px; }
+        
+        #hint-panel {
+            top: 80px; left: 20px; background: rgba(0,0,0,0.7);
+            padding: 12px 16px; border-radius: 10px; font-size: 13px;
+        }
+        #hint-panel h4 { color: #6bcbff; margin-bottom: 8px; }
+        
+        #splash-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 1000; transition: opacity 0.8s;
+        }
+        #splash-screen.hidden { opacity: 0; pointer-events: none; }
+        #splash-screen h1 {
+            font-size: 72px;
+            background: linear-gradient(45deg, #ff6b6b, #ffd93d, #6bcbff, #ff6b6b);
+            background-size: 300% 300%;
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            animation: gradientShift 3s ease infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes gradientShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+        #splash-screen p { color: #888; font-size: 18px; margin-bottom: 40px; }
+        
+        .game-btn {
+            background: linear-gradient(45deg, #ff6b6b, #ff8e53); border: none;
+            padding: 15px 50px; font-size: 24px; color: white;
+            border-radius: 50px; cursor: pointer; pointer-events: auto;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .game-btn:hover { transform: scale(1.1); box-shadow: 0 0 30px rgba(255,107,107,0.6); }
+        
+        #victory-screen, #game-over-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); display: none;
+            flex-direction: column; align-items: center; justify-content: center;
+            z-index: 1000;
+        }
+        #victory-screen h1 { font-size: 64px; color: #ffd93d; margin-bottom: 20px; }
+        #game-over-screen h1 { font-size: 64px; color: #ff6b6b; margin-bottom: 20px; }
+        .result-stars { font-size: 48px; margin: 20px 0; }
+        .result-stars span { margin: 0 10px; color: #333; }
+        .result-stars span.earned { color: #ffd93d; text-shadow: 0 0 20px #ffd93d; }
+        
+        #block-info {
+            position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.8); padding: 10px 20px; border-radius: 10px;
+            border: 2px solid #ffd93d; font-size: 16px; display: none; z-index: 150;
+        }
+        #block-info.show { display: block; }
+    </style>
+</head>
+<body>
+    <div id="splash-screen">
+        <h1>涂鸦特工</h1>
+        <p>GRAFFITI AGENT - 体感3D Demo</p>
+        <button id="btn-start" class="game-btn">开始游戏</button>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-overlay">
+        <div id="timer" class="hud-element">⏱ 90</div>
+        
+        <div id="controls-help" class="hud-element">
+            <h3>🕹 操作说明</h3>
+            <div><kbd>W</kbd>/<kbd>↑</kbd> 向上滑行</div>
+            <div><kbd>S</kbd>/<kbd>↓</kbd> 向下滑行</div>
+            <div><kbd>A</kbd>/<kbd>←</kbd> 向左滑行</div>
+            <div><kbd>D</kbd>/<kbd>→</kbd> 向右滑行</div>
+            <div><kbd>空格</kbd> 攥拳刹车</div>
+        </div>
+
+        <div id="hint-panel" class="hud-element">
+            <h4>🎯 任务提示</h4>
+            <div id="next-hint">收集对应颜色喷罐通过围挡</div>
+        </div>
+
+        <div id="color-inventory" class="hud-element">
+            <div class="color-slot" id="slot-red" style="background: #333; color: #ff6b6b;">--</div>
+            <div class="color-slot" id="slot-yellow" style="background: #333; color: #ffd93d;">--</div>
+            <div class="color-slot" id="slot-blue" style="background: #333; color: #6bcbff;">--</div>
+        </div>
+
+        <div id="action-feedback" class="hud-element"></div>
+
+        <div id="mini-map-container" class="hud-element">
+            <h4>🗺️ 全景地图</h4>
+            <canvas id="mini-map" width="200" height="200"></canvas>
+        </div>
+    </div>
+
+    <div id="block-info"></div>
+
+    <div id="victory-screen">
+        <h1>🎉 通关成功!</h1>
+        <div class="result-stars" id="victory-stars"></div>
+        <p id="victory-msg"></p>
+        <button class="game-btn" onclick="location.reload()">再玩一次</button>
+    </div>
+
+    <div id="game-over-screen">
+        <h1>⏰ 时间到!</h1>
+        <p style="color: #888; margin: 20px 0;">差一点点就成功了...</p>
+        <button class="game-btn" onclick="location.reload()">重新挑战</button>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+    <script>
+        // ========== 游戏状态 ==========
+        const GameState = {
+            colors: { red: false, yellow: false, blue: false },
+            barriers: [],
+            sprayCans: [],
+            timeRemaining: 90,
+            isPlaying: false,
+            currentSpeed: 0,
+            maxSpeed: 0.35,
+            acceleration: 0.015,
+            deceleration: 0.025,
+            isBraking: false,
+            playerDirection: { x: 0, z: -1 },
+            targetDirection: { x: 0, z: -1 },
+            currentBarrier: null,
+            reachedGoal: false
+        };
+
+        // ========== Three.js 变量 ==========
+        let scene, camera, renderer, player, playerTrail, clock;
+        let timerInterval = null;
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a2e);
+            scene.fog = new THREE.Fog(0x1a1a2e, 40, 100);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 25, 30);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+
+            setupLights();
+            createWorld();
+            createPlayer();
+            createSprayCans();
+            createBarriers();
+            createGoal();
+            
+            setupButtons();
+            setupControls();
+
+            animate();
+        }
+
+        function setupLights() {
+            scene.add(new THREE.AmbientLight(0x404060, 0.5));
+            
+            const sun = new THREE.DirectionalLight(0xffffff, 0.7);
+            sun.position.set(20, 40, 20);
+            sun.castShadow = true;
+            sun.shadow.mapSize.width = 2048;
+            sun.shadow.mapSize.height = 2048;
+            sun.shadow.camera.near = 0.5;
+            sun.shadow.camera.far = 150;
+            sun.shadow.camera.left = -60;
+            sun.shadow.camera.right = 60;
+            sun.shadow.camera.top = 60;
+            sun.shadow.camera.bottom = -60;
+            scene.add(sun);
+
+            // 彩色点缀灯
+            const points = [[-30, 10, -30], [30, 10, -50], [0, 8, -80]];
+            const colors = [0xff6b6b, 0xffd93d, 0x6bcbff];
+            points.forEach((p, i) => {
+                const light = new THREE.PointLight(colors[i], 0.6, 25);
+                light.position.set(...p);
+                scene.add(light);
+            });
+        }
+
+        function createWorld() {
+            // 主地面
+            const groundGeo = new THREE.PlaneGeometry(120, 150);
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x2a2a3e, roughness: 0.9 });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // 道路 - 主干道
+            createRoad(0, 0, 0, 8, 140);
+            
+            // 分叉路口 - 左路
+            createRoad(-15, 0, -20, 6, 60);
+            createRoad(-30, 0, -40, 6, 40);
+            
+            // 分叉路口 - 右路
+            createRoad(15, 0, -20, 6, 60);
+            createRoad(30, 0, -40, 6, 40);
+
+            // 分叉路口 - 中路
+            createRoad(0, 0, -60, 8, 40);
+
+            // 建筑物
+            createBuildings();
+            
+            // 装饰
+            createStreetLights();
+        }
+
+        function createRoad(x, y, z, width, length) {
+            const roadGeo = new THREE.PlaneGeometry(width, length);
+            const roadMat = new THREE.MeshStandardMaterial({ color: 0x3a3a4e, roughness: 0.8 });
+            const road = new THREE.Mesh(roadGeo, roadMat);
+            road.rotation.x = -Math.PI / 2;
+            road.position.set(x, y + 0.01, z);
+            scene.add(road);
+
+            // 道路标线
+            const lineMat = new THREE.MeshBasicMaterial({ color: 0x555555 });
+            for (let i = -length/2 + 4; i < length/2; i += 6) {
+                const lineGeo = new THREE.PlaneGeometry(0.15, 2);
+                const line = new THREE.Mesh(lineGeo, lineMat);
+                line.rotation.x = -Math.PI / 2;
+                line.position.set(x, y + 0.02, z + i);
+                scene.add(line);
+            }
+        }
+
+        function createBuildings() {
+            const bldColors = [0x1f2937, 0x2d3748, 0x1f2937, 0x374151];
+            const positions = [
+                // 左路建筑
+                [-25, 0, -30], [-35, 0, -30], [-25, 0, -45], [-35, 0, -45],
+                [-25, 0, -60], [-35, 0, -60], [-25, 0, -75], [-35, 0, -75],
+                // 右路建筑
+                [25, 0, -30], [35, 0, -30], [25, 0, -45], [35, 0, -45],
+                [25, 0, -60], [35, 0, -60], [25, 0, -75], [35, 0, -75],
+                // 后方建筑
+                [-15, 0, -90], [15, 0, -90], [0, 0, -95],
+                [-25, 0, -95], [25, 0, -95], [-40, 0, -70], [40, 0, -70],
+                [-40, 0, -90], [40, 0, -90]
+            ];
+
+            positions.forEach((pos, i) => {
+                const w = 5 + Math.random() * 4;
+                const h = 10 + Math.random() * 12;
+                const d = 5 + Math.random() * 4;
+                
+                const geo = new THREE.BoxGeometry(w, h, d);
+                const mat = new THREE.MeshStandardMaterial({
+                    color: bldColors[i % bldColors.length], roughness: 0.7
+                });
+                const bld = new THREE.Mesh(geo, mat);
+                bld.position.set(pos[0], h/2, pos[2]);
+                bld.castShadow = true;
+                bld.receiveShadow = true;
+                
+                // 窗户
+                const winMat = new THREE.MeshBasicMaterial({ color: 0x444466 });
+                const faceDir = Math.abs(pos[0]) > 20 ? 0 : 1;
+                for (let wy = 2; wy < h - 2; wy += 3) {
+                    for (let wx = -w/3; wx <= w/3; wx += w/3) {
+                        if (Math.random() > 0.3) {
+                            const winGeo = new THREE.PlaneGeometry(0.8, 1.2);
+                            const win = new THREE.Mesh(winGeo, winMat);
+                            win.position.set(
+                                faceDir === 0 ? pos[0] + Math.sign(pos[0]) * (w/2 + 0.01) : wx,
+                                wy,
+                                faceDir === 1 ? pos[2] + (w/2 + 0.01) : wx * 0.5
+                            );
+                            if (faceDir === 0) win.rotation.y = Math.PI/2 * Math.sign(pos[0]);
+                            bld.add(win);
+                        }
+                    }
+                }
+                scene.add(bld);
+            });
+        }
+
+        function createStreetLights() {
+            const lightPositions = [
+                [-5, 0, -10], [5, 0, -10], [-5, 0, -30], [5, 0, -30],
+                [-5, 0, -50], [5, 0, -50], [-5, 0, -70], [5, 0, -70],
+                [-20, 0, -35], [-20, 0, -55], [-20, 0, -75],
+                [20, 0, -35], [20, 0, -55], [20, 0, -75],
+                [-35, 0, -50], [35, 0, -50], [-35, 0, -80], [35, 0, -80]
+            ];
+
+            lightPositions.forEach(pos => {
+                // 灯柱
+                const poleGeo = new THREE.CylinderGeometry(0.1, 0.15, 6, 8);
+                const poleMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
+                const pole = new THREE.Mesh(poleGeo, poleMat);
+                pole.position.set(pos[0], 3, pos[2]);
+                scene.add(pole);
+
+                // 灯头
+                const headGeo = new THREE.SphereGeometry(0.4, 8, 8);
+                const headMat = new THREE.MeshBasicMaterial({ 
+                    color: Math.random() > 0.5 ? 0xffd93d : 0x6bcbff 
+                });
+                const head = new THREE.Mesh(headGeo, headMat);
+                head.position.set(pos[0], 6.3, pos[2]);
+                scene.add(head);
+            });
+        }
+
+        function createPlayer() {
+            player = new THREE.Group();
+
+            // 身体
+            const bodyGeo = new THREE.CapsuleGeometry(0.4, 1, 4, 8);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 1.2;
+            body.castShadow = true;
+            player.add(body);
+
+            // 头
+            const headGeo = new THREE.SphereGeometry(0.35, 16, 16);
+            const headMat = new THREE.MeshStandardMaterial({ color: 0xffdbac });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = 2.1;
+            head.castShadow = true;
+            player.add(head);
+
+            // 护目镜
+            const goggleMat = new THREE.MeshStandardMaterial({ 
+                color: 0xff6b6b, emissive: 0xff6b6b, emissiveIntensity: 0.3 
+            });
+            [-0.12, 0.12].forEach(x => {
+                const goggle = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.05, 8, 16), goggleMat);
+                goggle.position.set(x, 2.15, 0.25);
+                goggle.rotation.y = Math.PI / 2;
+                player.add(goggle);
+            });
+
+            // 滑板
+            const board = new THREE.Mesh(
+                new THREE.BoxGeometry(0.8, 0.1, 2.2),
+                new THREE.MeshStandardMaterial({ color: 0x6bcbff })
+            );
+            board.position.y = 0.2;
+            board.castShadow = true;
+            player.add(board);
+
+            // 轮子
+            const wheelMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+            [[-0.25, -0.8], [-0.25, 0.8], [0.25, -0.8], [0.25, 0.8]].forEach(([x, z]) => {
+                const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.1, 8), wheelMat);
+                wheel.rotation.z = Math.PI / 2;
+                wheel.position.set(x, 0.1, z);
+                player.add(wheel);
+            });
+
+            player.position.set(0, 0, 60);
+            player.rotation.y = Math.PI;
+            scene.add(player);
+
+            createTrail();
+        }
+
+        function createTrail() {
+            const geo = new THREE.BufferGeometry();
+            const pos = new Float32Array(150 * 3);
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            playerTrail = new THREE.Line(geo, new THREE.LineBasicMaterial({ 
+                color: 0xffffff, transparent: true, opacity: 0.6 
+            }));
+            playerTrail.frustumCulled = false;
+            scene.add(playerTrail);
+        }
+
+        function createSprayCans() {
+            // 主干道 - 红蓝混合
+            const mainCans = [
+                { name: 'red', color: 0xff6b6b, pos: { x: -3, z: 45 } },
+                { name: 'blue', color: 0x6bcbff, pos: { x: 3, z: 35 } },
+                { name: 'yellow', color: 0xffd93d, pos: { x: -2, z: 15 } },
+                { name: 'red', color: 0xff6b6b, pos: { x: 3, z: 5 } },
+                { name: 'blue', color: 0x6bcbff, pos: { x: -3, z: -15 } },
+                { name: 'yellow', color: 0xffd93d, pos: { x: 2, z: -35 } },
+                { name: 'red', color: 0xff6b6b, pos: { x: -2, z: -55 } },
+            ];
+
+            // 左路 - 偏红色系
+            const leftCans = [
+                { name: 'red', color: 0xff6b6b, pos: { x: -15, z: 40 } },
+                { name: 'red', color: 0xff6b6b, pos: { x: -18, z: 25 } },
+                { name: 'yellow', color: 0xffd93d, pos: { x: -20, z: 10 } },
+                { name: 'red', color: 0xff6b6b, pos: { x: -28, z: -25 } },
+                { name: 'blue', color: 0x6bcbff, pos: { x: -32, z: -50 } },
+                { name: 'red', color: 0xff6b6b, pos: { x: -30, z: -70 } },
+            ];
+
+            // 右路 - 偏蓝色系
+            const rightCans = [
+                { name: 'blue', color: 0x6bcbff, pos: { x: 15, z: 40 } },
+                { name: 'yellow', color: 0xffd93d, pos: { x: 18, z: 25 } },
+                { name: 'blue', color: 0x6bcbff, pos: { x: 20, z: 10 } },
+                { name: 'blue', color: 0x6bcbff, pos: { x: 28, z: -25 } },
+                { name: 'red', color: 0xff6b6b, pos: { x: 32, z: -50 } },
+                { name: 'blue', color: 0x6bcbff, pos: { x: 30, z: -70 } },
+            ];
+
+            [...mainCans, ...leftCans, ...rightCans].forEach(can => {
+                const group = new THREE.Group();
+                
+                const canMesh = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.3, 0.35, 1.2, 16),
+                    new THREE.MeshStandardMaterial({
+                        color: can.color, emissive: can.color,
+                        emissiveIntensity: 0.4, metalness: 0.6, roughness: 0.3
+                    })
+                );
+                canMesh.castShadow = true;
+                group.add(canMesh);
+                
+                const cap = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.15, 0.2, 0.2, 16),
+                    new THREE.MeshStandardMaterial({ color: 0x333333 })
+                );
+                cap.position.y = 0.7;
+                group.add(cap);
+
+                group.position.set(can.pos.x, 1.2, can.pos.z);
+                group.userData = { type: 'sprayCan', colorName: can.name, color: can.color, active: true };
+                
+                GameState.sprayCans.push(group);
+                scene.add(group);
+            });
+        }
+
+        function createBarriers() {
+            // 分叉点前的围挡 - 必须有对应颜色才能通过
+            const barrierConfigs = [
+                // 主干道第一道关卡 - 红色
+                { color: 'red', pos: { x: 0, z: 25 }, requiredColor: 'red', hint: '需要红色!' },
+                // 左路分叉口 - 黄色
+                { color: 'yellow', pos: { x: -12, z: 0 }, requiredColor: 'yellow', hint: '需要黄色!' },
+                // 右路分叉口 - 蓝色
+                { color: 'blue', pos: { x: 12, z: 0 }, requiredColor: 'blue', hint: '需要蓝色!' },
+                // 左路深处 - 红色
+                { color: 'red', pos: { x: -25, z: -20 }, requiredColor: 'red', hint: '需要红色!' },
+                // 右路深处 - 蓝色
+                { color: 'blue', pos: { x: 25, z: -20 }, requiredColor: 'blue', hint: '需要蓝色!' },
+                // 左路终点 - 黄色
+                { color: 'yellow', pos: { x: -35, z: -60 }, requiredColor: 'yellow', hint: '需要黄色!' },
+                // 右路终点 - 红色
+                { color: 'red', pos: { x: 35, z: -60 }, requiredColor: 'red', hint: '需要红色!' },
+                // 主干道深处 - 蓝色
+                { color: 'blue', pos: { x: 0, z: -45 }, requiredColor: 'blue', hint: '需要蓝色!' },
+                // 终點前 - 黄色
+                { color: 'yellow', pos: { x: 0, z: -75 }, requiredColor: 'yellow', hint: '需要黄色!' },
+            ];
+
+            barrierConfigs.forEach((cfg, idx) => {
+                const group = new THREE.Group();
+                const colorHex = getColorHex(cfg.color);
+                
+                // 围挡
+                const barrier = new THREE.Mesh(
+                    new THREE.BoxGeometry(6, 2.5, 0.4),
+                    new THREE.MeshStandardMaterial({ 
+                        color: 0x555555, roughness: 0.8, transparent: true, opacity: 0.85 
+                    })
+                );
+                barrier.position.y = 1.25;
+                barrier.castShadow = true;
+                group.add(barrier);
+
+                // 颜色标识
+                const indicator = new THREE.Mesh(
+                    new THREE.PlaneGeometry(5, 2),
+                    new THREE.MeshBasicMaterial({ color: colorHex, transparent: true, opacity: 0.7 })
+                );
+                indicator.position.set(0, 1.25, 0.21);
+                group.add(indicator);
+
+                // 标记图标
+                const markerMat = new THREE.MeshBasicMaterial({ color: colorHex });
+                const marker = new THREE.Mesh(new THREE.OctahedronGeometry(0.4, 0), markerMat);
+                marker.position.set(0, 3, 0);
+                group.add(marker);
+
+                group.position.set(cfg.pos.x, 0, cfg.pos.z);
+                group.userData = {
+                    type: 'barrier', colorName: cfg.color,
+                    requiredColor: cfg.requiredColor,
+                    hint: cfg.hint, active: true, index: idx
+                };
+                
+                GameState.barriers.push(group);
+                scene.add(group);
+            });
+        }
+
+        function createGoal() {
+            const core = new THREE.Group();
+            
+            const coreMesh = new THREE.Mesh(
+                new THREE.OctahedronGeometry(2.5, 0),
+                new THREE.MeshStandardMaterial({
+                    color: 0xffffff, emissive: 0xffd93d,
+                    emissiveIntensity: 0.6, metalness: 0.8, roughness: 0.2
+                })
+            );
+            core.add(coreMesh);
+
+            // 光环
+            const ring = new THREE.Mesh(
+                new THREE.TorusGeometry(4, 0.15, 8, 32),
+                new THREE.MeshBasicMaterial({ color: 0xffd93d, transparent: true, opacity: 0.5 })
+            );
+            ring.rotation.x = Math.PI / 2;
+            core.add(ring);
+
+            // 光柱
+            const beam = new THREE.Mesh(
+                new THREE.CylinderGeometry(1, 1, 30, 16, 1, true),
+                new THREE.MeshBasicMaterial({ color: 0xffd93d, transparent: true, opacity: 0.15, side: 2 })
+            );
+            beam.position.y = -5;
+            core.add(beam);
+
+            core.position.set(0, 5, -90);
+            core.userData = { type: 'goal' };
+            scene.add(core);
+        }
+
+        function getColorHex(name) {
+            return { red: 0xff6b6b, yellow: 0xffd93d, blue: 0x6bcbff }[name] || 0xffffff;
+        }
+
+        // ========== 控制 ==========
+        function setupButtons() {
+            document.getElementById('btn-start').addEventListener('click', startGame);
+        }
+
+        function setupControls() {
+            document.addEventListener('keydown', e => {
+                if (!GameState.isPlaying) return;
+                
+                switch(e.key.toLowerCase()) {
+                    case 'w': case 'arrowup':
+                        GameState.targetDirection = { x: 0, z: -1 };
+                        showFeedback('⬆️ 向上滑行');
+                        break;
+                    case 's': case 'arrowdown':
+                        GameState.targetDirection = { x: 0, z: 1 };
+                        showFeedback('⬇️ 向下滑行');
+                        break;
+                    case 'a': case 'arrowleft':
+                        GameState.targetDirection = { x: -1, z: 0 };
+                        showFeedback('⬅️ 向左滑行');
+                        break;
+                    case 'd': case 'arrowright':
+                        GameState.targetDirection = { x: 1, z: 0 };
+                        showFeedback('➡️ 向右滑行');
+                        break;
+                    case ' ':
+                        e.preventDefault();
+                        brake();
+                        break;
+                }
+            });
+
+            document.addEventListener('keyup', e => {
+                const k = e.key.toLowerCase();
+                if (['w', 'arrowup', 's', 'arrowdown', 'a', 'arrowleft', 'd', 'arrowright'].includes(k)) {
+                    if ((k === 'w' || k === 'arrowup') && GameState.targetDirection.z === -1) GameState.targetDirection.z = 0;
+                    if ((k === 's' || k === 'arrowdown') && GameState.targetDirection.z === 1) GameState.targetDirection.z = 0;
+                    if ((k === 'a' || k === 'arrowleft') && GameState.targetDirection.x === -1) GameState.targetDirection.x = 0;
+                    if ((k === 'd' || k === 'arrowright') && GameState.targetDirection.x === 1) GameState.targetDirection.x = 0;
+                }
+            });
+        }
+
+        function brake() {
+            GameState.isBraking = true;
+            showFeedback('✊ 急刹!');
+            createSparks();
+            setTimeout(() => GameState.isBraking = false, 300);
+        }
+
+        function createSparks() {
+            for (let i = 0; i < 25; i++) {
+                const spark = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.06, 4, 4),
+                    new THREE.MeshBasicMaterial({ color: 0xffaa00 })
+                );
+                spark.position.copy(player.position);
+                spark.position.y = 0.2;
+                const vel = new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.6,
+                    Math.random() * 0.4,
+                    (Math.random() - 0.5) * 0.6
+                );
+                scene.add(spark);
+                animateSpark(spark, vel);
+            }
+        }
+
+        function animateSpark(spark, vel) {
+            const animate = () => {
+                spark.position.add(vel);
+                vel.y -= 0.025;
+                spark.material.opacity -= 0.05;
+                if (spark.material.opacity > 0) requestAnimationFrame(animate);
+                else scene.remove(spark);
+            };
+            animate();
+        }
+
+        // ========== 游戏逻辑 ==========
+        function startGame() {
+            document.getElementById('splash-screen').classList.add('hidden');
+            GameState.isPlaying = true;
+            updateHint();
+
+            timerInterval = setInterval(() => {
+                if (!GameState.isPlaying) { clearInterval(timerInterval); return; }
+                GameState.timeRemaining--;
+                document.getElementById('timer').textContent = `⏱ ${GameState.timeRemaining}`;
+                if (GameState.timeRemaining <= 0) {
+                    GameState.isPlaying = false;
+                    clearInterval(timerInterval);
+                    document.getElementById('game-over-screen').style.display = 'flex';
+                }
+            }, 1000);
+        }
+
+        function updateHint() {
+            const next = getNextBarrier();
+            if (next) {
+                document.getElementById('next-hint').textContent = next.hint;
+            } else {
+                document.getElementById('next-hint').textContent = '冲向终点!';
+            }
+        }
+
+        function getNextBarrier() {
+            // 找到玩家前方的最近未通过的围挡
+            const ahead = GameState.barriers.filter(b => {
+                if (!b.userData.active) return false;
+                const dz = b.position.z - player.position.z;
+                return dz < 0 && dz > -80; // 前方
+            }).sort((a, b) => (b.position.z - player.position.z) - (a.position.z - player.position.z));
+            
+            return ahead.length > 0 ? ahead[ahead.length - 1] : null;
+        }
+
+        function checkBarrierCollision() {
+            const blockInfo = document.getElementById('block-info');
+            let nearBarrier = null;
+
+            GameState.barriers.forEach(barrier => {
+                if (!barrier.userData.active) return;
+                const dist = player.position.distanceTo(barrier.position);
+                
+                if (dist < 4) {
+                    nearBarrier = barrier;
+                    if (GameState.colors[barrier.userData.requiredColor]) {
+                        // 有对应颜色，炸掉围挡
+                        destroyBarrier(barrier);
+                        showFeedback(`🎨 ${barrier.userData.colorName.toUpperCase()} 突破!`);
+                    } else {
+                        // 没有对应颜色，停止
+                        if (GameState.currentSpeed > 0.05) {
+                            GameState.currentSpeed = 0;
+                            showFeedback(`❌ ${barrier.userData.hint}`);
+                        }
+                        blockInfo.textContent = `⚠️ ${barrier.userData.hint} 还有 ${GameState.colors[barrier.userData.requiredColor] ? '已收集' : '未收集'}`;
+                        blockInfo.classList.add('show');
+                    }
+                }
+            });
+
+            if (!nearBarrier) {
+                blockInfo.classList.remove('show');
+            }
+
+            GameState.currentBarrier = nearBarrier;
+        }
+
+        function destroyBarrier(barrier) {
+            barrier.userData.active = false;
+            showFeedback(`💥 突破 ${barrier.userData.colorName.toUpperCase()} 围挡!`);
+            updateHint();
+
+            // 爆炸效果
+            for (let i = 0; i < 40; i++) {
+                const piece = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.25, 0.25, 0.25),
+                    new THREE.MeshBasicMaterial({ color: getColorHex(barrier.userData.colorName) })
+                );
+                piece.position.copy(barrier.position);
+                piece.position.y = 1.5;
+                const vel = new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.6,
+                    Math.random() * 0.5,
+                    (Math.random() - 0.5) * 0.6
+                );
+                const rot = new THREE.Vector3(Math.random(), Math.random(), Math.random());
+                scene.add(piece);
+                animateExplosion(piece, vel, rot);
+            }
+
+            scene.remove(barrier);
+
+            // 检查胜利
+            if (GameState.barriers.every(b => !b.userData.active)) {
+                victory();
+            }
+        }
+
+        function animateExplosion(piece, vel, rot) {
+            const animate = () => {
+                piece.position.add(vel);
+                vel.y -= 0.02;
+                piece.rotation.x += rot.x;
+                piece.rotation.y += rot.y;
+                piece.material.opacity -= 0.025;
+                if (piece.material.opacity > 0) requestAnimationFrame(animate);
+                else scene.remove(piece);
+            };
+            animate();
+        }
+
+        function victory() {
+            GameState.isPlaying = false;
+            clearInterval(timerInterval);
+            
+            const stars = GameState.timeRemaining > 50 ? 3 : GameState.timeRemaining > 25 ? 2 : 1;
+            const msgs = ['压线过关!', '不错!', '完美通关!'];
+            
+            document.getElementById('victory-stars').innerHTML = 
+                [1,2,3].map(i => `<span class="${i <= stars ? 'earned' : ''}">⭐</span>`).join('');
+            document.getElementById('victory-msg').textContent = msgs[stars - 1];
+            document.getElementById('victory-screen').style.display = 'flex';
+        }
+
+        // ========== 更新循环 ==========
+        function updatePlayer() {
+            if (!GameState.isPlaying) return;
+
+            // 速度控制
+            if (GameState.isBraking) {
+                GameState.currentSpeed = Math.max(0, GameState.currentSpeed - 0.12);
+            } else if (GameState.targetDirection.x !== 0 || GameState.targetDirection.z !== 0) {
+                GameState.currentSpeed = Math.min(GameState.maxSpeed, GameState.currentSpeed + GameState.acceleration);
+            } else {
+                GameState.currentSpeed = Math.max(0, GameState.currentSpeed - GameState.deceleration);
+            }
+
+            if (GameState.currentSpeed > 0.01) {
+                // 转向
+                const angle = Math.atan2(GameState.targetDirection.x, GameState.targetDirection.z);
+                player.rotation.y = THREE.MathUtils.lerp(player.rotation.y, angle, 0.1);
+
+                // 移动
+                const dir = {
+                    x: Math.sin(player.rotation.y),
+                    z: Math.cos(player.rotation.y)
+                };
+
+                const newX = player.position.x + dir.x * GameState.currentSpeed;
+                const newZ = player.position.z + dir.z * GameState.currentSpeed;
+
+                // 边界
+                if (Math.abs(newX) < 12 || (newX > 10 && newX < 40) || (newX < -10 && newX > -40)) {
+                    if (Math.abs(newX) < 55) player.position.x = newX;
+                }
+                if (newZ > -95 && newZ < 65) {
+                    player.position.z = newZ;
+                }
+
+                updateTrail();
+            }
+
+            checkBarrierCollision();
+            checkGoal();
+        }
+
+        function updateTrail() {
+            const pos = playerTrail.geometry.attributes.position.array;
+            for (let i = pos.length - 3; i >= 3; i -= 3) {
+                pos[i] = pos[i-3]; pos[i+1] = pos[i-2]; pos[i+2] = pos[i-1];
+            }
+            pos[0] = player.position.x; pos[1] = 0.3; pos[2] = player.position.z;
+            playerTrail.geometry.attributes.position.needsUpdate = true;
+
+            let c = 0xffffff;
+            if (GameState.colors.red) c = 0xff6b6b;
+            else if (GameState.colors.yellow) c = 0xffd93d;
+            else if (GameState.colors.blue) c = 0x6bcbff;
+            playerTrail.material.color.setHex(c);
+        }
+
+        function checkSprayCans(time) {
+            GameState.sprayCans.forEach(can => {
+                if (!can.userData.active) return;
+                can.position.y = 1.2 + Math.sin(time * 2.5) * 0.25;
+                can.rotation.y = time;
+
+                if (player.position.distanceTo(can.position) < 1.8) {
+                    collectCan(can);
+                }
+            });
+        }
+
+        function collectCan(can) {
+            can.userData.active = false;
+            const name = can.userData.colorName;
+            GameState.colors[name] = true;
+            showFeedback(`🎉 收集 ${name.toUpperCase()}!`);
+            updateColorUI();
+            updateHint();
+
+            // 收集动画
+            const anim = () => {
+                can.position.y += 0.15;
+                can.scale.multiplyScalar(0.92);
+                if (can.position.y < 6) requestAnimationFrame(anim);
+                else scene.remove(can);
+            };
+            anim();
+
+            // 溅射
+            for (let i = 0; i < 15; i++) {
+                const p = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.12, 4, 4),
+                    new THREE.MeshBasicMaterial({ color: can.userData.color, transparent: true })
+                );
+                p.position.copy(can.position);
+                const v = new THREE.Vector3((Math.random()-.5)*.4, Math.random()*.3, (Math.random()-.5)*.4);
+                scene.add(p);
+                const a = () => {
+                    p.position.add(v); v.y -= .015; p.material.opacity -= .04;
+                    if (p.material.opacity > 0) requestAnimationFrame(a); else scene.remove(p);
+                };
+                a();
+            }
+        }
+
+        function checkGoal() {
+            if (player.position.z < -85 && !GameState.reachedGoal) {
+                const active = GameState.barriers.filter(b => b.userData.active);
+                if (active.length === 0) {
+                    GameState.reachedGoal = true;
+                    victory();
+                }
+            }
+        }
+
+        function updateGoal(time) {
+            scene.children.forEach(c => {
+                if (c.userData?.type === 'goal') {
+                    c.rotation.y = time * 0.5;
+                    c.position.y = 5 + Math.sin(time) * 0.4;
+                }
+            });
+        }
+
+        function updateCamera() {
+            const target = new THREE.Vector3(
+                player.position.x * 0.3,
+                player.position.y + 22,
+                player.position.z + 18
+            );
+            camera.position.lerp(target, 0.04);
+            camera.lookAt(player.position);
+        }
+
+        // ========== 全景地图 ==========
+        function updateMiniMap() {
+            const canvas = document.getElementById('mini-map');
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, 200, 200);
+
+            const scale = 1.8;
+            const cx = 100, cy = 100;
+            const offsetZ = 30;
+
+            // 道路
+            ctx.strokeStyle = '#3a3a4e';
+            ctx.lineWidth = 12;
+            // 主干道
+            ctx.beginPath();
+            ctx.moveTo(cx, cy + offsetZ * scale);
+            ctx.lineTo(cx, cy - 125 * scale + offsetZ * scale);
+            ctx.stroke();
+            // 左路
+            ctx.beginPath();
+            ctx.moveTo(cx - 12 * scale, cy - 20 * scale + offsetZ * scale);
+            ctx.lineTo(cx - 35 * scale, cy - 90 * scale + offsetZ * scale);
+            ctx.stroke();
+            // 右路
+            ctx.beginPath();
+            ctx.moveTo(cx + 12 * scale, cy - 20 * scale + offsetZ * scale);
+            ctx.lineTo(cx + 35 * scale, cy - 90 * scale + offsetZ * scale);
+            ctx.stroke();
+
+            // 喷罐
+            GameState.sprayCans.forEach(can => {
+                if (!can.userData.active) return;
+                const hex = can.userData.color.toString(16).padStart(6, '0');
+                ctx.fillStyle = '#' + hex;
+                ctx.beginPath();
+                ctx.arc(
+                    cx + can.position.x * scale,
+                    cy - can.position.z * scale + offsetZ * scale,
+                    5, 0, Math.PI * 2
+                );
+                ctx.fill();
+            });
+
+            // 围挡
+            GameState.barriers.forEach(b => {
+                if (!b.userData.active) return;
+                const hex = getColorHex(b.userData.colorName).toString(16).padStart(6, '0');
+                ctx.fillStyle = '#' + hex;
+                ctx.fillRect(
+                    cx + b.position.x * scale - 6,
+                    cy - b.position.z * scale + offsetZ * scale - 4,
+                    12, 8
+                );
+            });
+
+            // 玩家
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(
+                cx + player.position.x * scale,
+                cy - player.position.z * scale + offsetZ * scale,
+                7, 0, Math.PI * 2
+            );
+            ctx.fill();
+            
+            // 玩家朝向指示
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(
+                cx + player.position.x * scale,
+                cy - player.position.z * scale + offsetZ * scale
+            );
+            ctx.lineTo(
+                cx + player.position.x * scale + Math.sin(player.rotation.y) * 10,
+                cy - player.position.z * scale + offsetZ * scale + Math.cos(player.rotation.y) * 10
+            );
+            ctx.stroke();
+
+            // 目标
+            ctx.fillStyle = '#ffd93d';
+            ctx.beginPath();
+            ctx.arc(cx, cy + 60 * scale + offsetZ * scale, 8, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function updateColorUI() {
+            Object.keys(GameState.colors).forEach(c => {
+                const slot = document.getElementById(`slot-${c}`);
+                if (GameState.colors[c]) {
+                    slot.style.background = '#' + getColorHex(c).toString(16).padStart(6, '0');
+                    slot.classList.add('has-color');
+                    slot.textContent = c[0].toUpperCase();
+                } else {
+                    slot.style.background = '#333';
+                    slot.classList.remove('has-color');
+                    slot.textContent = '--';
+                }
+            });
+        }
+
+        function showFeedback(text) {
+            const el = document.getElementById('action-feedback');
+            el.textContent = text;
+            el.classList.remove('show');
+            void el.offsetWidth;
+            el.classList.add('show');
+        }
+
+        // ========== 主循环 ==========
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            const time = clock.getElapsedTime();
+
+            updatePlayer();
+            checkSprayCans(time);
+            updateGoal(time);
+            updateCamera();
+            updateMiniMap();
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
