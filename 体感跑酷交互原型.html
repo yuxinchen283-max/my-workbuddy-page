@@ -1,0 +1,1434 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>前进式3D体感跑酷交互原型</title>
+  <style>
+    :root {
+      --panel: rgba(12, 22, 34, 0.88);
+      --panel-strong: rgba(6, 12, 20, 0.94);
+      --line: rgba(255,255,255,0.16);
+      --text: #eff7ff;
+      --muted: #9fb4c9;
+      --cyan: #29d5ff;
+      --yellow: #ffd35c;
+      --red: #ff4b4b;
+      --green: #55f09a;
+      --purple: #b874ff;
+      --orange: #ff8a3d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 50% 12%, #173650 0, #09111b 46%, #04070c 100%);
+      color: var(--text);
+      font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+      overflow: hidden;
+      user-select: none;
+    }
+    .app {
+      display: grid;
+      grid-template-columns: 320px minmax(620px, 1fr) 340px;
+      gap: 14px;
+      height: 100vh;
+      padding: 14px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 18px 60px rgba(0,0,0,0.34);
+      overflow: hidden;
+      backdrop-filter: blur(10px);
+    }
+    .side { padding: 18px; overflow: auto; }
+    h1, h2 { margin: 0; }
+    h1 { font-size: 21px; line-height: 1.25; }
+    h2 { font-size: 15px; margin-top: 18px; margin-bottom: 10px; color: #d8ecff; }
+    .sub { color: var(--muted); font-size: 12px; line-height: 1.6; margin-top: 8px; }
+    .tagrow { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+    .tag { font-size: 11px; padding: 5px 8px; border: 1px solid rgba(255,255,255,0.15); border-radius: 999px; background: rgba(255,255,255,0.06); color: #d7e9ff; }
+    .gameWrap { position: relative; min-width: 620px; background: #07101a; border-radius: 18px; border: 1px solid var(--line); overflow: hidden; }
+    canvas { display: block; width: 100%; height: 100%; background: linear-gradient(180deg, #143047 0%, #07101a 60%, #03060a 100%); }
+    .hudTop { position: absolute; left: 16px; right: 16px; top: 14px; display: flex; align-items: flex-start; justify-content: space-between; pointer-events: none; gap: 12px; }
+    .hudBox { background: rgba(4, 9, 15, 0.66); border: 1px solid rgba(255,255,255,0.14); border-radius: 14px; padding: 10px 12px; min-width: 145px; box-shadow: 0 10px 30px rgba(0,0,0,0.28); }
+    .bigNum { font-size: 25px; font-weight: 900; letter-spacing: 0.4px; }
+    .tiny { color: var(--muted); font-size: 11px; }
+    .statusText { color: #dff5ff; font-weight: 700; font-size: 13px; margin-top: 4px; }
+    .toast { position: absolute; left: 50%; top: 20%; transform: translateX(-50%); padding: 12px 18px; border-radius: 999px; background: rgba(5, 10, 18, 0.76); border: 1px solid rgba(255,255,255,0.18); color: #fff; font-weight: 900; font-size: 20px; text-shadow: 0 2px 10px rgba(0,0,0,0.5); opacity: 0; transition: opacity 120ms ease, transform 120ms ease; pointer-events: none; white-space: nowrap; }
+    .toast.show { opacity: 1; transform: translateX(-50%) scale(1.04); }
+    .controlGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+    button { appearance: none; border: 1px solid rgba(255,255,255,0.18); background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05)); color: var(--text); border-radius: 14px; padding: 11px 10px; font-weight: 800; cursor: pointer; box-shadow: 0 10px 20px rgba(0,0,0,0.16); transition: transform 80ms ease, border-color 80ms ease, background 80ms ease; }
+    button:hover { border-color: rgba(41,213,255,0.56); background: rgba(41,213,255,0.12); }
+    button:active { transform: translateY(2px) scale(0.99); }
+    button.primary { grid-column: 1 / -1; background: linear-gradient(180deg, rgba(41,213,255,0.28), rgba(41,213,255,0.10)); border-color: rgba(41,213,255,0.48); }
+    .mapping { display: grid; gap: 8px; margin-top: 8px; }
+    .mapItem { display: grid; grid-template-columns: 58px 1fr; gap: 10px; align-items: center; padding: 9px 10px; background: rgba(255,255,255,0.055); border: 1px solid rgba(255,255,255,0.10); border-radius: 13px; }
+    .key { text-align: center; padding: 5px 6px; border-radius: 8px; color: #06101a; background: #dff5ff; font-weight: 900; font-size: 12px; }
+    .mapText { font-size: 12px; color: #d7e8fa; line-height: 1.45; }
+    .stateCard { margin-top: 10px; padding: 12px; border-radius: 14px; background: var(--panel-strong); border: 1px solid rgba(255,255,255,0.12); }
+    .stateLine { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); padding: 7px 0; }
+    .stateLine:last-child { border-bottom: 0; }
+    .stateLine b { color: #fff; }
+    .value { color: var(--cyan); font-weight: 800; text-align: right; }
+    .log { height: 180px; overflow: auto; background: rgba(0,0,0,0.24); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 10px; font-family: Consolas, "Microsoft YaHei", monospace; font-size: 11px; line-height: 1.55; }
+    .log div { color: #b7cae2; margin-bottom: 4px; }
+    .log .good { color: var(--green); }
+    .log .bad { color: #ff8787; }
+    .log .warn { color: var(--yellow); }
+    .checkItem { display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: start; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 12px; line-height: 1.45; color: #d5e5f5; }
+    .checkItem:last-child { border-bottom: 0; }
+    .dot { width: 14px; height: 14px; border-radius: 50%; background: rgba(255,255,255,0.16); margin-top: 2px; box-shadow: inset 0 0 0 2px rgba(255,255,255,0.08); }
+    .dot.ok { background: var(--green); box-shadow: 0 0 16px rgba(85,240,154,0.55); }
+    .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+    .legendItem { display: flex; gap: 8px; align-items: center; font-size: 11px; color: #c4d5e7; }
+    .swatch { width: 18px; height: 18px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); }
+    .note { margin-top: 12px; padding: 10px; border-radius: 12px; background: rgba(255,211,92,0.10); border: 1px solid rgba(255,211,92,0.28); color: #ffe6a4; font-size: 12px; line-height: 1.55; }
+    .cameraBox { position: relative; margin-top: 12px; border-radius: 14px; overflow: hidden; border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.28); }
+    .cameraBox video { display: block; width: 100%; height: 180px; object-fit: cover; transform: scaleX(-1); background: #000; }
+    .cameraBox canvas { display: block; width: 100%; height: 180px; object-fit: cover; position: absolute; inset: 0; pointer-events: none; background: transparent; }
+    .cameraStatus { margin-top: 8px; padding: 9px 10px; border-radius: 12px; background: rgba(41,213,255,0.08); border: 1px solid rgba(41,213,255,0.22); color: #dff5ff; font-size: 12px; line-height: 1.45; }
+    .gestureGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
+    .gestureChip { padding: 7px 8px; border-radius: 10px; background: rgba(255,255,255,0.055); border: 1px solid rgba(255,255,255,0.10); color: #c7d8ea; font-size: 11px; }
+    .gestureChip.on { color: #06101a; background: #55f09a; border-color: #a8ffd0; font-weight: 900; }
+    .gameOverOverlay {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at 50% 40%, rgba(30, 8, 12, 0.72), rgba(3, 6, 10, 0.92));
+      z-index: 5;
+      pointer-events: auto;
+    }
+    .gameOverOverlay.show { display: flex; }
+    .gameOverCard {
+      width: min(420px, calc(100% - 40px));
+      padding: 28px;
+      text-align: center;
+      border-radius: 24px;
+      border: 1px solid rgba(255,255,255,0.20);
+      background: rgba(7, 13, 22, 0.92);
+      box-shadow: 0 24px 80px rgba(0,0,0,0.52);
+    }
+    .gameOverTitle { font-size: 38px; font-weight: 900; color: #ff7070; letter-spacing: 2px; }
+    .gameOverStats { margin-top: 12px; color: #d9eaff; font-size: 14px; line-height: 1.8; }
+    .restartBtn { margin-top: 18px; width: 100%; font-size: 16px; background: linear-gradient(180deg, rgba(255,211,92,0.35), rgba(255,138,61,0.16)); border-color: rgba(255,211,92,0.55); }
+    .gameHintOverlay { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 4; width: min(560px, calc(100% - 48px)); padding: 18px 22px; border-radius: 22px; background: rgba(255,75,75,0.88); border: 1px solid rgba(255,255,255,0.28); box-shadow: 0 24px 80px rgba(0,0,0,0.42); color: #fff; text-align: center; pointer-events: none; opacity: 0; transition: opacity 120ms ease, transform 120ms ease; }
+    .gameHintOverlay.show { opacity: 1; transform: translate(-50%, -50%) scale(1.02); }
+    .gameHintTitle { font-size: 28px; font-weight: 900; letter-spacing: 1px; text-shadow: 0 2px 12px rgba(0,0,0,0.42); }
+    .gameHintText { margin-top: 8px; font-size: 15px; line-height: 1.55; font-weight: 700; }
+    @media (max-width: 1220px) { body { overflow: auto; } .app { height: auto; grid-template-columns: 1fr; } .gameWrap { height: 740px; min-width: 0; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="panel side">
+      <h1>前进式3D体感跑酷<br />交互原型</h1>
+      <div class="sub">已按你的反馈改成“怪物固定在3D场景世界坐标内，角色不断向前推进接近怪物并攻击”。画面仍保持锁定追尾/2.5D视角，避免镜头旋转和晕动。</div>
+        <div class="tagrow">
+        <span class="tag">敌人世界坐标固定</span>
+        <span class="tag">角色持续前进</span>
+        <span class="tag">攻击波反馈</span>
+        <span class="tag">摄像头体感</span>
+      </div>
+      <h2>体感输入</h2>
+      <div class="mapping">
+        <div class="mapItem"><div class="key">身体左/右倾</div><div class="mapText">肩膀/胸部相对头部偏转触发左/右变轨；每次倾斜只跨一格，身体回正后才接受下一次倾斜输入。</div></div>
+        <div class="mapItem"><div class="key">双手上举/身体快速上移</div><div class="mapText">身体整体连续快速上移且不是左右倾斜时，才触发跳跃，避免正常站立抖动误判。</div></div>
+        <div class="mapItem"><div class="key">抬手后下砸</div><div class="mapText">手腕抬到肩膀附近后，躯干保持非倾斜，再向下挥动即可触发下劈。</div></div>
+        <div class="mapItem"><div class="key">抬手后横挥</div><div class="mapText">手腕抬到肩膀附近后，躯干保持非倾斜，再横向扫动即可触发横扫，左右倾斜不会触发挥动。</div></div>
+      </div>
+      <button id="cameraBtn" class="primary" style="width:100%; margin-top:12px;">开启摄像头体感</button>
+      <div class="cameraBox">
+        <video id="cameraVideo" autoplay playsinline muted></video>
+        <canvas id="poseCanvas"></canvas>
+      </div>
+      <div id="cameraStatus" class="cameraStatus">摄像头未开启。键盘仍可作为调试备用。</div>
+      <div class="gestureGrid">
+        <div id="gestureLean" class="gestureChip">倾斜：待识别</div>
+        <div id="gestureJump" class="gestureChip">跳跃：待识别</div>
+        <div id="gestureSlam" class="gestureChip">下劈：待识别</div>
+        <div id="gestureSweep" class="gestureChip">横扫：待识别</div>
+      </div>
+
+      <h2>键盘调试备用</h2>
+      <div class="mapping">
+        <div class="mapItem"><div class="key">A / D</div><div class="mapText">左右倾斜：角色在三条世界跑道间变轨。</div></div>
+        <div class="mapItem"><div class="key">W</div><div class="mapText">单次跳跃：进入空中状态，越过固定地刺。</div></div>
+        <div class="mapItem"><div class="key">S</div><div class="mapText">手臂下挥：角色冲到近身窗口时下劈破盾。</div></div>
+        <div class="mapItem"><div class="key">Q / E</div><div class="mapText">手臂横挥：按角色所在跑道决定范围；中道覆盖左中右三道，左道覆盖左中，右道覆盖中右。</div></div>
+      </div>
+      <div class="controlGrid">
+        <button id="leftBtn">左倾 A</button>
+        <button id="rightBtn">右倾 D</button>
+        <button id="jumpBtn">跳跃 W</button>
+        <button id="slamBtn">下挥 S</button>
+        <button id="sweepLBtn">左横挥 Q</button>
+        <button id="sweepRBtn">右横挥 E</button>
+        <button id="resetBtn" class="primary">重置固定怪物赛道</button>
+      </div>
+      <div class="note">体感识别已改为骨骼点规则：换道看“两眼中点→胸部中点”的偏转角；倾斜一次只跨一格，必须身体回正后才接受第二次倾斜输入；攻击必须先抬手，且躯干非倾斜时才根据手腕主位移识别横扫/下劈；跳起后挥手可攻击空中目标，未跳起时无法攻击空中目标；跳跃要求身体整体连续快速上移，正常站立抖动不会触发。采集框内会实时标记这些骨骼点。</div>
+    </aside>
+
+    <main class="gameWrap panel">
+      <canvas id="game"></canvas>
+      <div class="hudTop">
+        <div class="hudBox"><div class="tiny">分数 / Score</div><div id="score" class="bigNum">0</div></div>
+        <div class="hudBox"><div class="tiny">金币 / Coins</div><div id="coins" class="bigNum">0</div></div>
+        <div class="hudBox"><div class="tiny">当前状态</div><div id="status" class="statusText">向前奔跑</div></div>
+        <div class="hudBox"><div class="tiny">生命 / HP</div><div id="hp" class="bigNum">5</div></div>
+      </div>
+      <div id="gameHintOverlay" class="gameHintOverlay">
+        <div id="gameHintTitle" class="gameHintTitle">请远离屏幕</div>
+        <div id="gameHintText" class="gameHintText">让头、肩膀和双手完整进入画面</div>
+      </div>
+      <div id="toast" class="toast">PERFECT</div>
+      <div id="gameOverOverlay" class="gameOverOverlay">
+        <div class="gameOverCard">
+          <div class="gameOverTitle">游戏结束</div>
+          <div id="gameOverStats" class="gameOverStats">分数 0 / 金币 0 / 距离 0m</div>
+          <button id="restartGameBtn" class="restartBtn">再来一局</button>
+        </div>
+      </div>
+    </main>
+
+    <aside class="panel side">
+      <h2 style="margin-top:0">实时世界状态</h2>
+      <div class="stateCard">
+        <div class="stateLine"><b>世界前进距离</b><span id="distanceText" class="value">0 m</span></div>
+        <div class="stateLine"><b>跑道</b><span id="laneText" class="value">中</span></div>
+        <div class="stateLine"><b>垂直状态</b><span id="airText" class="value">Ground</span></div>
+        <div class="stateLine"><b>攻击状态</b><span id="attackText" class="value">None</span></div>
+        <div class="stateLine"><b>最近目标距离</b><span id="targetText" class="value">--</span></div>
+        <div class="stateLine"><b>攻击窗口</b><span id="hitboxText" class="value">关闭</span></div>
+        <div class="stateLine"><b>Hit Stop</b><span id="hitstopText" class="value">0 ms</span></div>
+      </div>
+
+      <h2>验收标准监测</h2>
+      <div class="stateCard">
+        <div class="checkItem"><span id="checkWorld" class="dot"></span><span>敌人固定在世界Z坐标，角色前进使距离持续缩短。</span></div>
+        <div class="checkItem"><span id="checkAirCombo" class="dot"></span><span>起跳 → 空中挥击 → 落地奔跑，无状态卡死。</span></div>
+        <div class="checkItem"><span id="checkSweep" class="dot"></span><span>横扫范围按站位判定：中道=左中右，左道=左中，右道=中右。</span></div>
+        <div class="checkItem"><span id="checkSlam" class="dot"></span><span>下挥命中盾兵时触发击碎特效，无停顿卡顿。</span></div>
+        <div class="checkItem"><span id="checkSpike" class="dot"></span><span>跳跃能越过固定地刺。</span></div>
+      </div>
+
+      <h2>对象图例</h2>
+      <div class="legend">
+        <div class="legendItem"><span class="swatch" style="background:#ff4b4b"></span>盾牌大型敌人</div>
+        <div class="legendItem"><span class="swatch" style="background:#ff8a3d"></span>普通敌人</div>
+        <div class="legendItem"><span class="swatch" style="background:#b874ff"></span>飞行敌人</div>
+        <div class="legendItem"><span class="swatch" style="background:#d6e7f5"></span>地刺障碍</div>
+        <div class="legendItem"><span class="swatch" style="background:#ffd35c"></span>金币</div>
+        <div class="legendItem"><span class="swatch" style="background:#29d5ff"></span>攻击波</div>
+      </div>
+      <h2>交互日志</h2>
+      <div id="log" class="log"></div>
+    </aside>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const ui = {
+      score: document.getElementById('score'), coins: document.getElementById('coins'), hp: document.getElementById('hp'), status: document.getElementById('status'), toast: document.getElementById('toast'),
+      gameOverOverlay: document.getElementById('gameOverOverlay'), gameOverStats: document.getElementById('gameOverStats'),
+      gameHintOverlay: document.getElementById('gameHintOverlay'), gameHintTitle: document.getElementById('gameHintTitle'), gameHintText: document.getElementById('gameHintText'),
+      distanceText: document.getElementById('distanceText'), laneText: document.getElementById('laneText'), airText: document.getElementById('airText'), attackText: document.getElementById('attackText'), targetText: document.getElementById('targetText'),
+      hitboxText: document.getElementById('hitboxText'), hitstopText: document.getElementById('hitstopText'), log: document.getElementById('log'),
+      cameraBtn: document.getElementById('cameraBtn'), cameraVideo: document.getElementById('cameraVideo'), poseCanvas: document.getElementById('poseCanvas'), cameraStatus: document.getElementById('cameraStatus'),
+      gestureLean: document.getElementById('gestureLean'), gestureJump: document.getElementById('gestureJump'), gestureSlam: document.getElementById('gestureSlam'), gestureSweep: document.getElementById('gestureSweep'),
+      checkWorld: document.getElementById('checkWorld'), checkAirCombo: document.getElementById('checkAirCombo'), checkSweep: document.getElementById('checkSweep'), checkSlam: document.getElementById('checkSlam'), checkSpike: document.getElementById('checkSpike')
+    };
+
+    let W = 960, H = 740, dpr = 1;
+    const laneNames = ['左', '中', '右'];
+    const laneWorldX = [-1, 0, 1];
+    const viewDistance = 980;
+    const attackNear = 18;
+    const attackFar = 165;
+    const collideBack = -24;
+    const collideFront = 32;
+
+    const game = {
+      time: 0,
+      distance: 0,
+      speed: 205,
+      nextSpawnZ: 320,
+      score: 0,
+      coins: 0,
+      hp: 5,
+      gameOver: false,
+      hitStop: 0,
+      shake: 0,
+      objects: [],
+      particles: [],
+      waves: [],
+      chunkIndex: 0,
+      comboLandingWatch: false,
+      lastAirAttack: null,
+      checks: { world: false, airCombo: false, sweep: false, slam: false, spike: false }
+    };
+
+    const player = {
+      lane: 1,
+      targetLane: 1,
+      laneBlend: 1,
+      jumpT: 0,
+      jumpDur: 0.9,
+      airborne: false,
+      attack: null,
+      attackT: 0,
+      attackDur: 0.28,
+      sweepDir: 1,
+      hitbox: null,
+      invulnT: 0
+    };
+
+    const gesture = {
+      enabled: false,
+      stream: null,
+      poseDetector: null,
+      poseLoadPromise: null,
+      poseLoading: false,
+      poseReady: false,
+      poseLoadFailed: false,
+      pose: null,
+      lastPose: null,
+      poseHistory: [],
+      wristHistory: { left: [], right: [] },
+      chestHistory: [],
+      lastFace: null,
+      smoothFace: null,
+      stableFace: null,
+      faceHistory: [],
+      lastFrame: null,
+      lastMotion: null,
+      smoothMotion: null,
+      stableMotion: null,
+      neutralX: 0.5,
+      cooldowns: { move: 0, jump: 0, slam: 0, sweep: 0 },
+      leanGate: { locked: false, neutralFrames: 0, neutralRequired: 3 },
+      jumpGate: { upwardFrames: 0 },
+      states: { lean: '中立', jump: false, slam: false, sweep: false },
+      motionHistory: [],
+      lastSweepX: 0.5,
+      lastSweepTime: 0,
+      rawMotionHistory: [],
+      missingPoseHint: '',
+      missingPoseSince: 0,
+      offCanvas: document.createElement('canvas'),
+      lastPoseTime: 0
+    };
+
+    const audio = {
+      ctx: null,
+      beep(freq = 440, dur = 0.05, type = 'sine', gain = 0.04) {
+        try {
+          if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const o = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          o.type = type; o.frequency.value = freq; g.gain.value = gain;
+          o.connect(g); g.connect(this.ctx.destination); o.start();
+          g.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + dur);
+          o.stop(this.ctx.currentTime + dur);
+        } catch (e) {}
+      }
+    };
+
+    async function loadPoseDetector() {
+      if (gesture.poseDetector) return gesture.poseDetector;
+      if (gesture.poseLoadPromise) return gesture.poseLoadPromise;
+      gesture.poseLoading = true;
+      gesture.poseLoadFailed = false;
+      gesture.poseLoadPromise = (async () => {
+        try {
+          if (!('BarcodeDetector' in window) && !navigator.onLine) return null;
+          await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js');
+          await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js');
+          if (window.poseDetection) {
+            await tf.setBackend('webgl').catch(() => tf.setBackend('cpu'));
+            await tf.ready();
+            gesture.poseDetector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING, enableSmoothing: true });
+            gesture.poseReady = true;
+            addLog('MoveNet 骨骼点模型已预加载。', 'good');
+            if (gesture.enabled) ui.cameraStatus.textContent = '骨骼点模型已就绪，正在实时识别体感输入。';
+            return gesture.poseDetector;
+          }
+          return null;
+        } catch (err) {
+          gesture.poseDetector = null;
+          gesture.poseReady = false;
+          gesture.poseLoadFailed = true;
+          addLog(`骨骼点模型加载失败，使用备用运动检测：${err.message || err}`, 'warn');
+          return null;
+        } finally {
+          gesture.poseLoading = false;
+          gesture.poseLoadPromise = null;
+        }
+      })();
+      return gesture.poseLoadPromise;
+    }
+
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        if ([...document.scripts].some(s => s.src === src)) return resolve();
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = () => reject(new Error(src));
+        document.head.appendChild(s);
+      });
+    }
+
+    async function startCameraGesture() {
+      if (gesture.enabled) return;
+      ui.cameraStatus.textContent = '正在请求摄像头权限，请在浏览器弹窗中选择允许...';
+      try {
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }, audio: false });
+        } catch (firstErr) {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
+        gesture.stream = stream;
+        ui.cameraVideo.autoplay = true;
+        ui.cameraVideo.muted = true;
+        ui.cameraVideo.playsInline = true;
+        ui.cameraVideo.srcObject = stream;
+        await new Promise(resolve => {
+          if (ui.cameraVideo.readyState >= 2) resolve();
+          else ui.cameraVideo.onloadedmetadata = resolve;
+        });
+        await ui.cameraVideo.play();
+        if (!gesture.poseDetector && !gesture.poseLoading && !gesture.poseLoadFailed) loadPoseDetector();
+        gesture.enabled = true;
+        gesture.faceDetector = 'FaceDetector' in window ? new FaceDetector({ fastMode: true, maxDetectedFaces: 1 }) : null;
+        ui.cameraBtn.textContent = '摄像头体感运行中';
+        ui.cameraBtn.disabled = true;
+        ui.cameraStatus.textContent = gesture.poseDetector ? '摄像头画面已显示：骨骼点体感识别已启用。换道=眼胸连线角度；单次倾斜只跨一格，身体回正后才能再次变轨；攻击=手臂抬起后挥动；跳跃=身体整体快速上移。' : '摄像头画面已显示：骨骼点模型正在后台准备，完成后会自动进入正式体感模式。';
+        addLog(gesture.poseDetector ? '摄像头体感输入已开启，骨骼点识别立即运行。' : '摄像头体感输入已开启，等待预加载模型就绪后自动识别骨骼点。', 'good');
+        requestAnimationFrame(processGestureFrame);
+      } catch (err) {
+        ui.cameraStatus.textContent = `摄像头开启失败：${err.name || ''} ${err.message || err}。请允许浏览器摄像头权限；如果当前是 file:// 预览，可改用本地服务器 http://localhost 预览。`;
+        addLog(`摄像头开启失败：${err.message || err}`, 'bad');
+      }
+    }
+
+    function processGestureFrame() {
+      if (!gesture.enabled) return;
+      const video = ui.cameraVideo;
+      if (video.readyState >= 2) {
+        const now = performance.now();
+        analyzeMotionFrame(video, now);
+        if (gesture.poseDetector) estimatePoseFrame(video, now);
+        if (!gesture.poseDetector && gesture.faceDetector && now - gesture.lastPoseTime > 140) {
+          gesture.lastPoseTime = now;
+          gesture.faceDetector.detect(video).then(faces => {
+            if (faces && faces[0]) {
+              const box = faces[0].boundingBox;
+              const rawFace = { x: (box.x + box.width / 2) / video.videoWidth, y: (box.y + box.height / 2) / video.videoHeight, w: box.width / video.videoWidth, h: box.height / video.videoHeight };
+              gesture.smoothFace = gesture.smoothFace ? stableFilterPoint(gesture.smoothFace, rawFace, 0.10, 0.36, 0.006) : rawFace;
+              gesture.faceHistory.push(gesture.smoothFace);
+              while (gesture.faceHistory.length > 7) gesture.faceHistory.shift();
+              gesture.stableFace = medianPoint(gesture.faceHistory);
+              gesture.lastFace = gesture.stableFace;
+            }
+          }).catch(() => { gesture.faceDetector = null; });
+        }
+      if (gesture.pose) detectPoseGestures();
+      else if (gesture.poseLoading) gesture.states.lean = '模型准备中';
+      else if (gesture.lastFace) detectLeanFromFace();
+      else detectLeanFromMotion();
+        drawPoseOverlay();
+        updateGestureUi();
+      }
+      requestAnimationFrame(processGestureFrame);
+    }
+
+    async function estimatePoseFrame(video, now) {
+      if (now - gesture.lastPoseTime < 66) return;
+      gesture.lastPoseTime = now;
+      try {
+        const poses = await gesture.poseDetector.estimatePoses(video, { flipHorizontal: false });
+        if (!poses || !poses[0]) return;
+        const pose = normalizePose(poses[0], video.videoWidth, video.videoHeight, now);
+        if (!pose) {
+          gesture.pose = null;
+          gesture.poseHistory = [];
+          gesture.wristHistory.left = [];
+          gesture.wristHistory.right = [];
+          gesture.chestHistory = [];
+          return;
+        }
+        gesture.missingPoseHint = '';
+        gesture.missingPoseSince = 0;
+        gesture.poseHistory.push(pose);
+        while (gesture.poseHistory.length > 5) gesture.poseHistory.shift();
+        gesture.pose = smoothPose(pose);
+        updatePoseHistories(gesture.pose);
+      } catch (err) {}
+    }
+
+    function normalizePose(raw, vw, vh, now) {
+      const byName = {};
+      for (const k of raw.keypoints || []) byName[k.name || k.part] = { x: k.x / vw, y: k.y / vh, score: k.score || 0 };
+      const leftEye = byName.left_eye || byName.leftEye;
+      const rightEye = byName.right_eye || byName.rightEye;
+      const leftShoulder = byName.left_shoulder || byName.leftShoulder;
+      const rightShoulder = byName.right_shoulder || byName.rightShoulder;
+      const leftWrist = byName.left_wrist || byName.leftWrist;
+      const rightWrist = byName.right_wrist || byName.rightWrist;
+      const required = [
+        ['左眼', leftEye, 0.18], ['右眼', rightEye, 0.18],
+        ['左肩', leftShoulder, 0.18], ['右肩', rightShoulder, 0.18]
+      ];
+      const missing = required.filter(([, point, minScore]) => !point || (point.score || 0) < minScore).map(([name]) => name);
+      if (missing.length) {
+        gesture.missingPoseHint = `未检测到完整骨骼点：${missing.join('、')}。请后退远离屏幕，让头、肩膀和双手完整进入画面。`;
+        gesture.missingPoseSince = now;
+        return null;
+      }
+      const eyeMid = midPoint(leftEye, rightEye);
+      const chest = midPoint(leftShoulder, rightShoulder);
+      return { eyeMid, chest, leftEye, rightEye, leftShoulder, rightShoulder, leftWrist, rightWrist, time: now };
+    }
+
+    function smoothPose(pose) {
+      const prev = gesture.pose;
+      if (!prev) return pose;
+      return {
+        eyeMid: smoothPoint(prev.eyeMid, pose.eyeMid, 0.34),
+        chest: smoothPoint(prev.chest, pose.chest, 0.30),
+        leftEye: smoothPoint(prev.leftEye, pose.leftEye, 0.34),
+        rightEye: smoothPoint(prev.rightEye, pose.rightEye, 0.34),
+        leftShoulder: smoothPoint(prev.leftShoulder, pose.leftShoulder, 0.30),
+        rightShoulder: smoothPoint(prev.rightShoulder, pose.rightShoulder, 0.30),
+        leftWrist: smoothPoint(prev.leftWrist, pose.leftWrist, 0.48),
+        rightWrist: smoothPoint(prev.rightWrist, pose.rightWrist, 0.48),
+        time: pose.time
+      };
+    }
+
+    function smoothPoint(a, b, t) {
+      if (!a || !b) return b || a;
+      return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t), score: b.score };
+    }
+
+    function midPoint(a, b) {
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, score: Math.min(a.score || 1, b.score || 1) };
+    }
+
+    function updatePoseHistories(pose) {
+      gesture.chestHistory.push({ ...pose.chest, time: pose.time });
+      while (gesture.chestHistory.length > 8) gesture.chestHistory.shift();
+      if (pose.leftWrist && (pose.leftWrist.score || 0) > 0.10) gesture.wristHistory.left.push({ ...pose.leftWrist, raised: isWristRaised(pose.leftWrist, pose.leftShoulder, pose.chest), time: pose.time });
+      if (pose.rightWrist && (pose.rightWrist.score || 0) > 0.10) gesture.wristHistory.right.push({ ...pose.rightWrist, raised: isWristRaised(pose.rightWrist, pose.rightShoulder, pose.chest), time: pose.time });
+      while (gesture.wristHistory.left.length > 6) gesture.wristHistory.left.shift();
+      while (gesture.wristHistory.right.length > 6) gesture.wristHistory.right.shift();
+    }
+
+    function isWristRaised(wrist, shoulder, chest) {
+      if (!wrist || !shoulder || !chest || (wrist.score || 0) < 0.10) return false;
+      return wrist.y < shoulder.y + 0.210 || wrist.y < chest.y + 0.045;
+    }
+
+    function detectPoseGestures() {
+      const pose = gesture.pose;
+      if (!pose || game.gameOver) return;
+      for (const k of Object.keys(gesture.cooldowns)) gesture.cooldowns[k] = Math.max(0, gesture.cooldowns[k] - 1 / 30);
+      gesture.states.jump = false; gesture.states.slam = false; gesture.states.sweep = false;
+
+      const dx = pose.chest.x - pose.eyeMid.x;
+      const dy = pose.chest.y - pose.eyeMid.y;
+      const angle = Math.atan2(dx, Math.max(0.001, dy)) * 180 / Math.PI;
+      const isLeaning = Math.abs(angle) >= 7;
+      if (!isLeaning) {
+        gesture.states.lean = '中立';
+        registerLeanNeutral();
+      } else {
+        const dir = angle < 0 ? -1 : 1;
+        gesture.states.lean = angle < 0 ? `左倾 ${Math.round(angle)}°` : `右倾 ${Math.round(angle)}°`;
+        if (gesture.cooldowns.move <= 0 && registerLeanInput(dir, '骨骼倾斜')) gesture.cooldowns.move = 0.18;
+      }
+
+      const chestOld = gesture.chestHistory.length >= 6 ? gesture.chestHistory[0] : null;
+      if (chestOld) {
+        const chestDy = pose.chest.y - chestOld.y;
+        const chestDx = pose.chest.x - chestOld.x;
+        const verticalDominant = Math.abs(chestDy) > Math.max(0.045, Math.abs(chestDx) * 1.65);
+        if (!isLeaning && verticalDominant && chestDy < -0.048) gesture.jumpGate.upwardFrames += 1;
+        else gesture.jumpGate.upwardFrames = 0;
+        if (gesture.jumpGate.upwardFrames >= 2 && cooldownReady('jump', 0.72)) {
+          gesture.jumpGate.upwardFrames = 0;
+          inputJump(); gesture.states.jump = true; addLog('身体整体快速上移且非倾斜 → 触发跳跃。', 'good'); return;
+        }
+      }
+
+      const torsoStableForAttack = Math.abs(angle) < 12 && (!chestOld || Math.abs(pose.chest.x - chestOld.x) < 0.065);
+      if (!torsoStableForAttack) return;
+      const left = getWristDelta('left');
+      const right = getWristDelta('right');
+      const best = chooseWristDelta(left, right);
+      if (!best || !best.wasRaised) return;
+      const ax = Math.abs(best.dx), ay = Math.abs(best.dy);
+      if (best.dy > 0.012 && ay > ax * 0.48 && cooldownReady('slam', 0.18)) {
+        inputSlam(); gesture.states.slam = true; addLog('抬手后向下挥动 → 触发重击。', 'good'); return;
+      }
+      if (ax > 0.010 && ax > ay * 0.34 && cooldownReady('sweep', 0.18)) {
+        inputSweep(best.dx < 0 ? 1 : -1); gesture.states.sweep = true; addLog(player.airborne ? '跳起后横挥 → 触发空中横扫。' : '抬手后横向挥动 → 触发横扫。', 'good');
+      }
+    }
+
+    function getWristDelta(side) {
+      const h = gesture.wristHistory[side];
+      if (!h || h.length < 2) return null;
+      let best = null;
+      const now = h[h.length - 1];
+      for (let i = Math.max(0, h.length - 5); i < h.length - 1; i++) {
+        const old = h[i];
+        const dx = now.x - old.x;
+        const dy = now.y - old.y;
+        const dist = Math.hypot(dx, dy);
+        const candidate = { side, dx, dy, dist, now, old, wasRaised: now.raised || old.raised || h.some(p => p.raised) };
+        if (!best || candidate.dist > best.dist) best = candidate;
+      }
+      return best;
+    }
+
+    function chooseWristDelta(a, b) {
+      if (a && b) return a.dist > b.dist ? a : b;
+      return a || b;
+    }
+
+    function analyzeMotionFrame(video, now) {
+      const c = gesture.offCanvas;
+      const w = 96, h = 72;
+      c.width = w; c.height = h;
+      const g = c.getContext('2d', { willReadFrequently: true });
+      g.drawImage(video, 0, 0, w, h);
+      const img = g.getImageData(0, 0, w, h).data;
+      if (!gesture.lastFrame) { gesture.lastFrame = new Uint8ClampedArray(img); gesture.lastMotion = { x: 0.5, y: 0.5, amount: 0, vx: 0, vy: 0, time: now }; return; }
+      let sum = 0, sx = 0, sy = 0;
+      for (let y = 0; y < h; y += 2) {
+        for (let x = 0; x < w; x += 2) {
+          const i = (y * w + x) * 4;
+          const d = Math.abs(img[i] - gesture.lastFrame[i]) + Math.abs(img[i+1] - gesture.lastFrame[i+1]) + Math.abs(img[i+2] - gesture.lastFrame[i+2]);
+          if (d > 42) { sum += d; sx += x * d; sy += y * d; }
+        }
+      }
+      const old = gesture.lastMotion || { x: 0.5, y: 0.5, time: now, amount: 0 };
+      const dt = Math.max(16, now - old.time);
+      const x = sum > 0 ? sx / sum / w : old.x;
+      const y = sum > 0 ? sy / sum / h : old.y;
+      const amount = sum / 100000;
+      const rawMotion = { x, y, amount, vx: (x - old.x) / dt * 1000, vy: (y - old.y) / dt * 1000, time: now };
+      gesture.rawMotionHistory.push(rawMotion);
+      while (gesture.rawMotionHistory.length > 8) gesture.rawMotionHistory.shift();
+      gesture.smoothMotion = gesture.smoothMotion ? stableFilterMotion(gesture.smoothMotion, rawMotion) : rawMotion;
+      gesture.motionHistory.push(gesture.smoothMotion);
+      while (gesture.motionHistory.length > 10) gesture.motionHistory.shift();
+      gesture.stableMotion = medianMotion(gesture.motionHistory);
+      gesture.lastMotion = gesture.stableMotion;
+      gesture.lastFrame = new Uint8ClampedArray(img);
+      detectMotionGestures();
+    }
+
+    function stableFilterPoint(prev, raw, slow = 0.10, fast = 0.36, deadband = 0.006) {
+      const dx = raw.x - prev.x;
+      const dy = raw.y - prev.y;
+      const speed = Math.hypot(dx, dy);
+      if (speed < deadband) {
+        return {
+          x: lerp(prev.x, raw.x, 0.025),
+          y: lerp(prev.y, raw.y, 0.025),
+          w: lerp(prev.w, raw.w, 0.04),
+          h: lerp(prev.h, raw.h, 0.04)
+        };
+      }
+      const t = clamp(slow + speed * 3.2, slow, fast);
+      return {
+        x: lerp(prev.x, raw.x, t),
+        y: lerp(prev.y, raw.y, t),
+        w: lerp(prev.w, raw.w, t * 0.45),
+        h: lerp(prev.h, raw.h, t * 0.45)
+      };
+    }
+
+    function stableFilterMotion(prev, raw) {
+      const dx = raw.x - prev.x;
+      const dy = raw.y - prev.y;
+      const speed = Math.hypot(dx, dy);
+      const posT = speed < 0.012 ? 0.035 : clamp(0.09 + speed * 3.8, 0.09, 0.42);
+      return {
+        x: lerp(prev.x, raw.x, posT),
+        y: lerp(prev.y, raw.y, posT),
+        amount: lerp(prev.amount, raw.amount, 0.24),
+        vx: lerp(prev.vx, raw.vx, 0.22),
+        vy: lerp(prev.vy, raw.vy, 0.22),
+        time: raw.time
+      };
+    }
+
+    function median(values) {
+      const arr = [...values].sort((a, b) => a - b);
+      return arr[Math.floor(arr.length / 2)] || 0;
+    }
+
+    function medianPoint(points) {
+      if (!points.length) return null;
+      return {
+        x: median(points.map(p => p.x)),
+        y: median(points.map(p => p.y)),
+        w: median(points.map(p => p.w)),
+        h: median(points.map(p => p.h))
+      };
+    }
+
+    function medianMotion(points) {
+      if (!points.length) return null;
+      return {
+        x: median(points.map(p => p.x)),
+        y: median(points.map(p => p.y)),
+        amount: median(points.map(p => p.amount)),
+        vx: median(points.map(p => p.vx)),
+        vy: median(points.map(p => p.vy)),
+        time: points[points.length - 1].time
+      };
+    }
+
+    function registerLeanNeutral() {
+      gesture.leanGate.neutralFrames += 1;
+      if (gesture.leanGate.neutralFrames >= gesture.leanGate.neutralRequired) gesture.leanGate.locked = false;
+    }
+
+    function registerLeanInput(dir, sourceText) {
+      gesture.leanGate.neutralFrames = 0;
+      if (gesture.leanGate.locked) return false;
+      inputMove(dir);
+      gesture.leanGate.locked = true;
+      if (sourceText) addLog(`${sourceText} → 单次变轨后锁定，身体回正才可再次变轨。`, 'good');
+      return true;
+    }
+
+    function cooldownReady(name, seconds) {
+      if (gesture.cooldowns[name] > 0) return false;
+      gesture.cooldowns[name] = seconds;
+      return true;
+    }
+
+    function detectLeanFromFace() {
+      if (!gesture.lastFace || game.gameOver) return;
+      const dx = gesture.lastFace.x - gesture.neutralX;
+      if (Math.abs(dx) < 0.040) { gesture.states.lean = '中立'; registerLeanNeutral(); return; }
+      const desiredDir = dx < 0 ? 1 : -1;
+      gesture.states.lean = dx < 0 ? '右倾' : '左倾';
+      if (gesture.cooldowns.move <= 0 && registerLeanInput(desiredDir, '脸部偏移倾斜')) {
+        gesture.cooldowns.move = 0.18;
+      }
+    }
+
+    function detectLeanFromMotion() {
+      const m = gesture.lastMotion;
+      if (!m || game.gameOver || m.amount < 0.075) return;
+      if (m.x < 0.455) { gesture.states.lean = '右侧运动'; if (gesture.cooldowns.move <= 0 && registerLeanInput(1, '右侧运动倾斜')) gesture.cooldowns.move = 0.18; }
+      else if (m.x > 0.545) { gesture.states.lean = '左侧运动'; if (gesture.cooldowns.move <= 0 && registerLeanInput(-1, '左侧运动倾斜')) gesture.cooldowns.move = 0.18; }
+      else { gesture.states.lean = '中立'; registerLeanNeutral(); }
+    }
+
+    function detectMotionGestures() {
+      if (gesture.pose) return;
+      const m = gesture.lastMotion;
+      if (!m || game.gameOver) return;
+      for (const k of Object.keys(gesture.cooldowns)) gesture.cooldowns[k] = Math.max(0, gesture.cooldowns[k] - 1 / 30);
+      gesture.states.jump = false; gesture.states.slam = false; gesture.states.sweep = false;
+      if (m.amount > 0.065 && m.y < 0.46 && cooldownReady('jump', 0.42)) { inputJump(); gesture.states.jump = true; addLog('体感上举/上跳 → 触发跳跃。', 'good'); return; }
+
+      const hist = gesture.rawMotionHistory.length >= 4 ? gesture.rawMotionHistory : gesture.motionHistory;
+      const old = hist.length >= 4 ? hist[0] : null;
+      const newest = hist.length ? hist[hist.length - 1] : m;
+      const spanX = old ? Math.abs(newest.x - old.x) : 0;
+      const spanY = old ? (newest.y - old.y) : 0;
+      const verticalDominant = Math.abs(spanY) > Math.max(0.016, spanX * 0.82);
+      const horizontalDominant = spanX > Math.max(0.035, Math.abs(spanY) * 0.95);
+
+      if (old && m.amount > 0.045 && verticalDominant && spanY > 0.018 && cooldownReady('slam', 0.28)) {
+        inputSlam();
+        gesture.states.slam = true;
+        addLog('体感竖挥下砸 → 触发重击。', 'good');
+        return;
+      }
+
+      if (old && m.amount > 0.065 && horizontalDominant && cooldownReady('sweep', 0.34)) {
+        const dir = newest.x < old.x ? 1 : -1;
+        inputSweep(dir);
+        gesture.states.sweep = true;
+        addLog('体感横挥 → 触发横扫攻击。', 'good');
+      }
+    }
+
+    function drawPoseOverlay() {
+      const c = ui.poseCanvas;
+      const rect = c.getBoundingClientRect();
+      const d = Math.min(2, window.devicePixelRatio || 1);
+      c.width = Math.floor(rect.width * d); c.height = Math.floor(rect.height * d);
+      const g = c.getContext('2d');
+      g.setTransform(-d, 0, 0, d, c.width, 0);
+      g.clearRect(0, 0, rect.width, rect.height);
+      g.strokeStyle = 'rgba(41,213,255,0.62)'; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(rect.width * 0.5, 0); g.lineTo(rect.width * 0.5, rect.height); g.stroke();
+      if (gesture.pose) drawPoseKeypoints(g, rect);
+      else if (gesture.lastFace) {
+        const x = rect.width * gesture.lastFace.x, y = rect.height * gesture.lastFace.y;
+        const rw = rect.width * gesture.lastFace.w, rh = rect.height * gesture.lastFace.h;
+        g.strokeStyle = '#55f09a'; g.lineWidth = 3; g.strokeRect(x - rw/2, y - rh/2, rw, rh);
+        g.fillStyle = '#55f09a'; g.beginPath(); g.arc(x, y, 5, 0, Math.PI * 2); g.fill();
+      }
+      g.setTransform(d, 0, 0, d, 0, 0);
+      if (!gesture.pose && gesture.missingPoseHint) {
+        g.fillStyle = 'rgba(255,75,75,0.20)';
+        g.fillRect(10, 10, rect.width - 20, 34);
+        g.fillStyle = '#fff';
+        g.font = '900 12px Microsoft YaHei';
+        g.fillText('骨骼点缺失，请看游戏画面中间提示', 22, 32);
+      }
+      if (!gesture.pose && gesture.lastMotion) {
+        const x = rect.width * gesture.lastMotion.x, y = rect.height * gesture.lastMotion.y;
+        const r = 6 + Math.min(18, gesture.lastMotion.amount * 30);
+        g.fillStyle = 'rgba(255,211,92,0.92)'; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = 'rgba(255,244,184,0.9)'; g.lineWidth = 2; g.stroke();
+        if (gesture.motionHistory.length > 1) {
+        g.strokeStyle = 'rgba(255,211,92,0.38)'; g.lineWidth = 2; g.beginPath();
+          gesture.motionHistory.forEach((p, i) => {
+            const px = rect.width * p.x, py = rect.height * p.y;
+            if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+          });
+          g.stroke();
+        }
+        g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(x, y); g.lineTo(x + gesture.lastMotion.vx * 16, y + gesture.lastMotion.vy * 16); g.stroke();
+      }
+    }
+
+    function drawPoseKeypoints(g, rect) {
+      const p = gesture.pose;
+      const map = pt => ({ x: pt.x * rect.width, y: pt.y * rect.height });
+      const eye = map(p.eyeMid), chest = map(p.chest);
+      drawLine(g, eye, chest, '#55f09a', 3);
+      drawLine(g, map(p.leftShoulder), map(p.rightShoulder), 'rgba(85,240,154,0.6)', 2);
+      if (p.leftWrist) drawLine(g, map(p.leftShoulder), map(p.leftWrist), '#ffd35c', 2);
+      if (p.rightWrist) drawLine(g, map(p.rightShoulder), map(p.rightWrist), '#ffd35c', 2);
+      drawPoint(g, eye, '#55f09a', '眼中');
+      drawPoint(g, chest, '#29d5ff', '胸中');
+      if (p.leftWrist) drawPoint(g, map(p.leftWrist), '#ffd35c', '左腕');
+      if (p.rightWrist) drawPoint(g, map(p.rightWrist), '#ffd35c', '右腕');
+      const dx = p.chest.x - p.eyeMid.x;
+      const dy = p.chest.y - p.eyeMid.y;
+      const angle = Math.atan2(dx, Math.max(0.001, dy)) * 180 / Math.PI;
+      drawReadableText(g, `眼胸角 ${Math.round(angle)}°`, chest.x + 8, chest.y - 10, '#dff5ff', '12px Microsoft YaHei');
+      drawHistory(g, rect, gesture.chestHistory, '#29d5ff');
+      drawHistory(g, rect, gesture.wristHistory.left, '#ffd35c');
+      drawHistory(g, rect, gesture.wristHistory.right, '#ffd35c');
+    }
+
+    function drawPoint(g, p, color, label) {
+      g.fillStyle = color; g.beginPath(); g.arc(p.x, p.y, 6, 0, Math.PI * 2); g.fill();
+      const oldTransform = g.getTransform();
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      const tx = oldTransform.a * p.x + oldTransform.c * p.y + oldTransform.e;
+      const ty = oldTransform.b * p.x + oldTransform.d * p.y + oldTransform.f;
+      g.fillStyle = '#06101a'; g.font = '900 10px Microsoft YaHei'; g.textAlign = 'center'; g.fillText(label, tx, ty + 3);
+      g.setTransform(oldTransform);
+      g.textAlign = 'left';
+    }
+
+    function drawReadableText(g, text, x, y, color, font) {
+      const oldTransform = g.getTransform();
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      const tx = oldTransform.a * x + oldTransform.c * y + oldTransform.e;
+      const ty = oldTransform.b * x + oldTransform.d * y + oldTransform.f;
+      g.fillStyle = color;
+      g.font = font;
+      g.fillText(text, tx, ty);
+      g.setTransform(oldTransform);
+    }
+
+    function drawLine(g, a, b, color, width) {
+      g.strokeStyle = color; g.lineWidth = width; g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+    }
+
+    function drawHistory(g, rect, hist, color) {
+      if (!hist || hist.length < 2) return;
+      g.strokeStyle = color; g.globalAlpha = 0.45; g.lineWidth = 2; g.beginPath();
+      hist.forEach((p, i) => { const x = p.x * rect.width, y = p.y * rect.height; if (i === 0) g.moveTo(x, y); else g.lineTo(x, y); });
+      g.stroke(); g.globalAlpha = 1;
+    }
+
+    function updateGestureUi() {
+      ui.gestureLean.textContent = `倾斜：${gesture.states.lean}`;
+      ui.gestureJump.textContent = `跳跃：${gesture.states.jump ? '触发' : '待识别'}`;
+      ui.gestureSlam.textContent = `下劈：${gesture.states.slam ? '触发' : '待识别'}`;
+      ui.gestureSweep.textContent = `横扫：${gesture.states.sweep ? '触发' : '待识别'}`;
+      ui.gestureLean.className = 'gestureChip ' + (gesture.states.lean !== '中立' && gesture.states.lean !== '待识别' ? 'on' : '');
+      ui.gestureJump.className = 'gestureChip ' + (gesture.states.jump ? 'on' : '');
+      ui.gestureSlam.className = 'gestureChip ' + (gesture.states.slam ? 'on' : '');
+      ui.gestureSweep.className = 'gestureChip ' + (gesture.states.sweep ? 'on' : '');
+      if (gesture.missingPoseHint) {
+        ui.gameHintTitle.textContent = '请远离屏幕';
+        ui.gameHintText.textContent = gesture.missingPoseHint.replace('未检测到完整骨骼点：', '缺少：');
+        ui.gameHintOverlay.classList.add('show');
+      } else {
+        ui.gameHintOverlay.classList.remove('show');
+      }
+      if (gesture.pose) ui.cameraStatus.textContent = `骨骼点运行中：${gesture.states.lean}。抬起手腕轨迹：左${gesture.wristHistory.left.length}帧，右${gesture.wristHistory.right.length}帧。攻击=只识别抬起手臂的挥动，倾斜时保护。`;
+      else if (gesture.poseLoading) ui.cameraStatus.textContent = '骨骼点模型正在后台准备中；准备完成后会自动进入正式体感模式。';
+      else if (gesture.missingPoseHint) ui.cameraStatus.textContent = '骨骼点不完整，请看游戏画面中间提示。';
+      else if (gesture.lastMotion) ui.cameraStatus.textContent = `备用运动检测：${gesture.states.lean}，运动量 ${gesture.lastMotion.amount.toFixed(2)}，横向速度 ${gesture.lastMotion.vx.toFixed(2)}，纵向速度 ${gesture.lastMotion.vy.toFixed(2)}。`;
+    }
+
+    function resize() {
+      const rect = canvas.getBoundingClientRect();
+      dpr = Math.min(2, window.devicePixelRatio || 1);
+      W = Math.max(620, rect.width);
+      H = Math.max(540, rect.height);
+      canvas.width = Math.floor(W * dpr);
+      canvas.height = Math.floor(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function projectLane(lane, relZ) {
+      const depth = clamp(1 - relZ / viewDistance, 0, 1);
+      const horizon = H * 0.20;
+      const y = horizon + Math.pow(depth, 1.55) * (H * 0.69);
+      const laneSpread = 36 + Math.pow(depth, 1.18) * Math.min(W * 0.23, 230);
+      const x = W / 2 + laneWorldX[lane] * laneSpread;
+      const scale = 0.22 + Math.pow(depth, 1.25) * 1.12;
+      return { x, y, scale, depth };
+    }
+
+    function projectPlayer() {
+      const lane = player.laneBlend;
+      const depth = 0.92;
+      const laneSpread = 36 + Math.pow(depth, 1.18) * Math.min(W * 0.23, 230);
+      const x = W / 2 + (lane - 1) * laneSpread;
+      const y = H * 0.78 - jumpHeight();
+      return { x, y, scale: 1.24, depth };
+    }
+
+    function addLog(text, type = '') {
+      const div = document.createElement('div');
+      div.className = type;
+      const t = new Date();
+      div.textContent = `[${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}] ${text}`;
+      ui.log.prepend(div);
+      while (ui.log.children.length > 30) ui.log.removeChild(ui.log.lastChild);
+    }
+
+    function showToast(text, color = '#fff') {
+      ui.toast.textContent = text;
+      ui.toast.style.color = color;
+      ui.toast.classList.add('show');
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => ui.toast.classList.remove('show'), 520);
+    }
+
+    function resetGame() {
+      game.time = 0; game.distance = 0; game.nextSpawnZ = 320; game.score = 0; game.coins = 0; game.hp = 5; game.gameOver = false; game.hitStop = 0; game.shake = 0;
+      game.objects = []; game.particles = []; game.waves = []; game.chunkIndex = 0; game.comboLandingWatch = false; game.lastAirAttack = null;
+      game.checks = { world: false, airCombo: false, sweep: false, slam: false, spike: false };
+      player.lane = 1; player.targetLane = 1; player.laneBlend = 1; player.airborne = false; player.jumpT = 0; player.attack = null; player.attackT = 0; player.hitbox = null; player.invulnT = 0;
+      ui.gameOverOverlay.classList.remove('show');
+      for (let i = 0; i < 7; i++) spawnNextChunk();
+      addLog('随机怪物赛道已生成：障碍与怪物会随机出现在左/中/右三条道路，角色开始向前推进。', 'warn');
+    }
+
+    function spawnNextChunk() {
+      const z = game.nextSpawnZ;
+      const type = game.chunkIndex % 3;
+      const lane = randomLane();
+      if (type === 0) {
+        game.objects.push(obj('shield', lane, z, 'ground'));
+        spawnCoinLine(randomOtherLane(lane), z + 130, 4, 54);
+      } else if (type === 1) {
+        const lane2 = randomOtherLane(lane);
+        game.objects.push(obj('grunt', lane, z, 'ground'));
+        game.objects.push(obj('grunt', lane2, z + 8, 'ground'));
+        spawnCoinLine(randomLane(), z - 90, 3, 50);
+        spawnCoinLine(randomOtherLane(lane2), z + 130, 3, 50);
+      } else {
+        const flyerLane = randomLane();
+        game.objects.push(obj('spike', lane, z, 'ground'));
+        game.objects.push(obj('flyer', flyerLane, z + 16, 'air'));
+        spawnCoinLine(randomOtherLane(lane), z - 120, 4, 48);
+      }
+      game.nextSpawnZ += 560;
+      game.chunkIndex++;
+    }
+
+    function randomLane() {
+      return Math.floor(Math.random() * 3);
+    }
+
+    function randomOtherLane(exceptLane) {
+      const lanes = [0, 1, 2].filter(l => l !== exceptLane);
+      return lanes[Math.floor(Math.random() * lanes.length)];
+    }
+
+    function spawnCoinLine(lane, startZ, count, gap) {
+      for (let i = 0; i < count; i++) {
+        game.objects.push(obj('coin', lane, startZ + i * gap, 'collectible'));
+      }
+    }
+
+    function obj(type, lane, z, layer) {
+      return { id: Math.random().toString(36).slice(2), type, lane, z, layer, alive: true, hit: false, collected: false, radius: type === 'shield' ? 42 : type === 'spike' ? 34 : type === 'coin' ? 20 : 30, bornZ: z };
+    }
+
+    function inputMove(dir) {
+      const next = Math.max(0, Math.min(2, player.targetLane + dir));
+      if (next === player.targetLane) { addLog(`已在${dir < 0 ? '最左' : '最右'}跑道，忽略变轨。`); return; }
+      player.targetLane = next;
+      addLog(`${dir < 0 ? '左' : '右'}倾事件 → 角色在世界跑道中变到${laneNames[next]}。`);
+      audio.beep(500, 0.035, 'triangle', 0.025);
+    }
+
+    function inputJump() {
+      if (player.airborne) { addLog('跳跃输入被保护：当前已在空中。'); return; }
+      player.airborne = true; player.jumpT = 0; game.comboLandingWatch = false; game.lastAirAttack = null;
+      addLog('单次跳跃事件 → 角色继续向前，同时进入空中状态。', 'good');
+      showToast('JUMP', '#dff5ff'); audio.beep(720, 0.08, 'sine', 0.035);
+    }
+
+    function inputSlam() { startAttack('slam', 0); }
+    function inputSweep(dir) { startAttack('sweep', dir); }
+
+    function sweepLanes(lane) {
+      if (lane === 0) return [0, 1];
+      if (lane === 2) return [1, 2];
+      return [0, 1, 2];
+    }
+
+    function laneListText(lanes) {
+      return lanes.map(i => laneNames[i]).join('+');
+    }
+
+    function startAttack(kind, dir) {
+      player.attack = kind; player.attackT = 0; player.sweepDir = dir || player.sweepDir || 1;
+      const air = player.airborne;
+      buildHitbox();
+      spawnAttackWave(kind, player.hitbox);
+      if (kind === 'slam') {
+        addLog(`${air ? '跳跃 + 下挥' : '手臂下挥'} → 在前进近身窗口内执行${air ? '空中下劈' : '下劈重击'}。`, air ? 'good' : '');
+        showToast(air ? 'AIR SLAM' : 'SLAM', air ? '#ffd35c' : '#fff'); audio.beep(150, 0.09, 'sawtooth', 0.045);
+        if (air) { game.comboLandingWatch = true; game.lastAirAttack = '空中下劈'; }
+      } else {
+        const lanes = sweepLanes(player.lane);
+        addLog(`${air ? '跳跃 + 横挥' : '手臂横挥'} → 攻击世界前方窗口，当前站${laneNames[player.lane]}道，覆盖${laneListText(lanes)}。`, 'good');
+        showToast(air ? 'AIR SWEEP' : 'SWEEP', air ? '#b874ff' : '#29d5ff'); audio.beep(980, 0.07, 'square', 0.032);
+        game.checks.sweep = true;
+        if (air) { game.comboLandingWatch = true; game.lastAirAttack = '空中横扫'; }
+      }
+      resolveAttackHits();
+    }
+
+    function buildHitbox() {
+      const lane = player.lane;
+      if (player.attack === 'slam') {
+        player.hitbox = { lanes: [lane], z1: game.distance + attackNear, z2: game.distance + attackFar, layer: player.airborne ? 'air' : 'ground', kind: 'slam' };
+      } else if (player.attack === 'sweep') {
+        player.hitbox = { lanes: sweepLanes(lane), z1: game.distance + attackNear, z2: game.distance + attackFar, layer: player.airborne ? 'air' : 'ground', kind: 'sweep' };
+      }
+    }
+
+    function spawnAttackWave(kind, hb) {
+      if (!hb) return;
+      game.waves.push({
+        kind,
+        lanes: [...hb.lanes],
+        z1: hb.z1,
+        z2: hb.z2,
+        layer: hb.layer,
+        life: 0.34,
+        max: 0.34,
+        born: game.time
+      });
+    }
+
+    function resolveAttackHits() {
+      if (!player.hitbox) return;
+      for (const o of game.objects) {
+        if (!o.alive || o.hit || o.type === 'coin') continue;
+        if (!player.hitbox.lanes.includes(o.lane)) continue;
+        if (o.z < player.hitbox.z1 || o.z > player.hitbox.z2) continue;
+        if (o.type === 'shield' && player.hitbox.kind === 'slam') {
+          destroyObj(o, '前进近身 → 下劈破盾击碎', true); game.checks.slam = true;
+        } else if (o.type === 'grunt' && player.hitbox.kind === 'sweep' && player.hitbox.layer === 'ground') {
+          destroyObj(o, '前进近身 → 横扫击杀普通敌人', false);
+        } else if (o.type === 'flyer' && player.hitbox.layer === 'air' && (player.hitbox.kind === 'sweep' || player.hitbox.kind === 'slam')) {
+          destroyObj(o, `前进近身 → ${player.hitbox.kind === 'sweep' ? '空中横扫' : '空中下劈'}击破飞行敌人`, false);
+        } else if (o.type === 'grunt' && player.hitbox.kind === 'slam') {
+          destroyObj(o, '前进近身 → 重击碾压普通敌人', false);
+        }
+      }
+    }
+
+    function destroyObj(o, reason, heavy) {
+      o.alive = false; o.hit = true;
+      game.score += heavy ? 300 : 120;
+      const p = projectLane(o.lane, o.z - game.distance);
+      burst(p.x, p.y, heavy ? ['#ff4b4b', '#ffd35c', '#ffffff'] : ['#29d5ff', '#ff8a3d', '#ffffff'], heavy ? 48 : 26);
+      addLog(reason, 'good'); showToast(heavy ? 'SHIELD BREAK!' : '+HIT', heavy ? '#ffd35c' : '#55f09a');
+      if (heavy) { audio.beep(90, 0.13, 'sawtooth', 0.07); }
+      else audio.beep(620, 0.04, 'triangle', 0.035);
+    }
+
+    function burst(x, y, colors, count) {
+      for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2; const s = 90 + Math.random() * 320;
+        game.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 90, life: 0.45 + Math.random() * 0.35, max: 0.8, color: colors[Math.floor(Math.random() * colors.length)], size: 3 + Math.random() * 7 });
+      }
+    }
+
+    function collectCoin(o) {
+      o.alive = false;
+      o.hit = true;
+      o.collected = true;
+      game.coins += 1;
+      game.score += 10;
+      const p = projectLane(o.lane, o.z - game.distance);
+      burst(p.x, p.y, ['#ffd35c', '#fff4b8', '#ff9f1c'], 14);
+      showToast('+1 COIN', '#ffd35c');
+      audio.beep(1180, 0.035, 'triangle', 0.035);
+    }
+
+    function gameOver() {
+      if (game.gameOver) return;
+      game.gameOver = true;
+      player.attack = null;
+      player.hitbox = null;
+      game.waves = [];
+      ui.gameOverStats.textContent = `分数 ${game.score} / 金币 ${game.coins} / 距离 ${Math.round(game.distance)}m`;
+      ui.gameOverOverlay.classList.add('show');
+      addLog('生命值扣完 → 游戏结束，等待点击“再来一局”。', 'bad');
+      showToast('GAME OVER', '#ff7070');
+      audio.beep(80, 0.25, 'sawtooth', 0.06);
+    }
+
+    function damage(reason) {
+      if (game.gameOver || player.invulnT > 0) return;
+      game.hp = Math.max(0, game.hp - 1); player.invulnT = 0.75; game.shake = 16;
+      addLog(`${reason} 生命值 -1，剩余 ${game.hp}/5。`, 'bad'); showToast('HP -1', '#ff8787'); audio.beep(120, 0.12, 'square', 0.06);
+      if (game.hp <= 0) gameOver();
+    }
+
+    function update(dt) {
+      if (game.gameOver) {
+        updateUi();
+        return;
+      }
+      game.time += dt;
+      if (game.hitStop > 0) { game.hitStop = Math.max(0, game.hitStop - dt); updateUi(); return; }
+      game.distance += game.speed * dt;
+      if (game.distance > 45) game.checks.world = true;
+
+      player.laneBlend += (player.targetLane - player.laneBlend) * Math.min(1, dt * 10);
+      player.lane = Math.round(player.laneBlend);
+      if (Math.abs(player.targetLane - player.laneBlend) < 0.03) { player.laneBlend = player.targetLane; player.lane = player.targetLane; }
+
+      if (player.airborne) {
+        player.jumpT += dt;
+        if (player.jumpT >= player.jumpDur) {
+          player.airborne = false; player.jumpT = 0;
+          if (game.comboLandingWatch) { game.checks.airCombo = true; addLog(`${game.lastAirAttack || '空中攻击'} → 落地后继续向前奔跑。`, 'good'); }
+          game.comboLandingWatch = false;
+        }
+      }
+      if (player.attack) {
+        player.attackT += dt; buildHitbox(); resolveAttackHits();
+        if (player.attackT > player.attackDur) { player.attack = null; player.hitbox = null; }
+      }
+      if (player.invulnT > 0) player.invulnT -= dt;
+
+      while (game.nextSpawnZ < game.distance + viewDistance + 900) spawnNextChunk();
+      checkCoinCollection();
+      checkCollisions();
+      game.objects = game.objects.filter(o => o.z > game.distance - 180 && (o.alive || o.z > game.distance - 80));
+      for (const p of game.particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 520 * dt; p.life -= dt; }
+      game.particles = game.particles.filter(p => p.life > 0);
+      for (const w of game.waves) w.life -= dt;
+      game.waves = game.waves.filter(w => w.life > 0);
+      game.shake = Math.max(0, game.shake - dt * 24);
+      updateUi();
+    }
+
+    function checkCoinCollection() {
+      for (const o of game.objects) {
+        if (o.type !== 'coin' || !o.alive || o.hit) continue;
+        const dz = o.z - game.distance;
+        if (dz < -20 || dz > 42) continue;
+        if (o.lane !== player.lane) continue;
+        collectCoin(o);
+      }
+    }
+
+    function checkCollisions() {
+      for (const o of game.objects) {
+        if (!o.alive || o.hit || o.type === 'coin') continue;
+        const dz = o.z - game.distance;
+        if (dz < collideBack || dz > collideFront) continue;
+        if (o.lane !== player.lane) continue;
+        if (o.type === 'spike') {
+          if (player.airborne) { o.hit = true; game.checks.spike = true; game.score += 40; addLog('角色前进越过固定地刺。', 'good'); showToast('SPIKE DODGED', '#dff5ff'); }
+          else damage('前进撞上固定地刺：应提前跳跃。');
+        } else if (o.type === 'shield') damage('前进撞上盾牌大型敌人：应在近身窗口下劈。');
+        else if (o.type === 'grunt') damage('前进撞上普通敌人：应横扫或变轨。');
+        else if (o.type === 'flyer' && player.airborne) damage('空中前进撞上飞行敌人：应空中横扫。');
+      }
+    }
+
+    function jumpHeight() {
+      if (!player.airborne) return 0;
+      const t = Math.min(1, player.jumpT / player.jumpDur);
+      return Math.sin(t * Math.PI) * 112;
+    }
+    function lerp(a, b, t) { return a + (b - a) * t; }
+    function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+    function draw() {
+      const sx = (Math.random() - 0.5) * game.shake;
+      const sy = (Math.random() - 0.5) * game.shake;
+      ctx.clearRect(0, 0, W, H);
+      ctx.save(); ctx.translate(sx, sy);
+      drawWorldRoad(); drawObjects(); drawHitbox(); drawAttackWaves(); drawPlayer(); drawParticles(); drawSpeedLines();
+      ctx.restore();
+      if (game.hitStop > 0) drawHitStopOverlay();
+    }
+
+    function drawWorldRoad() {
+      const horizon = H * 0.20;
+      const bottomY = H * 0.95;
+      const grad = ctx.createLinearGradient(0, horizon, 0, bottomY);
+      grad.addColorStop(0, '#183b55'); grad.addColorStop(1, '#07131e');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.moveTo(W/2 - 78, horizon); ctx.lineTo(W/2 + 78, horizon); ctx.lineTo(W/2 + Math.min(W*0.38, 390), bottomY); ctx.lineTo(W/2 - Math.min(W*0.38, 390), bottomY); ctx.closePath(); ctx.fill();
+      for (let laneEdge = -1.5; laneEdge <= 1.5; laneEdge += 1) {
+        ctx.strokeStyle = laneEdge === -1.5 || laneEdge === 1.5 ? 'rgba(255,255,255,0.24)' : 'rgba(255,255,255,0.18)';
+        ctx.lineWidth = laneEdge === -1.5 || laneEdge === 1.5 ? 2 : 1.5;
+        ctx.setLineDash(laneEdge === -0.5 || laneEdge === 0.5 ? [14, 16] : []);
+        ctx.beginPath();
+        ctx.moveTo(W/2 + laneEdge * 52, horizon);
+        ctx.lineTo(W/2 + laneEdge * Math.min(W*0.25, 250), bottomY);
+        ctx.stroke(); ctx.setLineDash([]);
+      }
+      const step = 120;
+      const start = Math.floor(game.distance / step) * step;
+      for (let z = start; z < game.distance + viewDistance; z += step) {
+        const rel = z - game.distance;
+        const pL = projectLane(0, rel);
+        const pR = projectLane(2, rel);
+        ctx.strokeStyle = `rgba(41,213,255,${0.05 + pL.depth * 0.14})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(pL.x - 72 * pL.scale, pL.y); ctx.lineTo(pR.x + 72 * pR.scale, pR.y); ctx.stroke();
+        ctx.fillStyle = `rgba(255,255,255,${0.05 + pL.depth * 0.12})`;
+        ctx.font = `${Math.max(9, 10 * pL.scale)}px Microsoft YaHei`; ctx.textAlign = 'center';
+        if (pL.depth > 0.1) ctx.fillText(`${Math.round(z)}m`, W / 2, pL.y - 4);
+      }
+      const pp = projectPlayer();
+      ctx.fillStyle = 'rgba(41,213,255,0.12)';
+      roundRect(pp.x - 70, pp.y + 40, 140, 78, 18, true, false);
+    }
+
+    function drawObjects() {
+      const visible = game.objects.filter(o => o.z - game.distance > -90 && o.z - game.distance < viewDistance).sort((a,b) => b.z - a.z);
+      for (const o of visible) {
+        if (!o.alive && o.z < game.distance + 40) continue;
+        const rel = o.z - game.distance;
+        const p = projectLane(o.lane, rel);
+        ctx.save(); ctx.translate(p.x, p.y); ctx.scale(p.scale, p.scale);
+        ctx.globalAlpha = o.alive ? 1 : 0.25;
+        if (o.type === 'shield') drawShieldEnemy();
+        if (o.type === 'grunt') drawGrunt();
+        if (o.type === 'flyer') { ctx.translate(0, -52); drawFlyer(); }
+        if (o.type === 'spike') drawSpike();
+        if (o.type === 'coin') drawCoin(game.time + o.bornZ * 0.01);
+        ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.font = '900 10px Arial'; ctx.textAlign = 'center';
+        if (o.type !== 'coin') ctx.fillText(`${Math.max(0, Math.round(rel))}m`, 0, 52);
+        ctx.restore();
+      }
+    }
+
+    function drawShieldEnemy() {
+      ctx.shadowColor = '#ff4b4b'; ctx.shadowBlur = 16; ctx.fillStyle = '#5b1414'; roundRect(-35, -34, 70, 68, 14, true, false);
+      ctx.shadowBlur = 0; ctx.fillStyle = '#ff4b4b'; roundRect(-25, -26, 50, 52, 12, true, false);
+      ctx.fillStyle = '#f5d76e'; ctx.beginPath(); ctx.moveTo(0, -32); ctx.lineTo(27, -15); ctx.lineTo(21, 22); ctx.lineTo(0, 34); ctx.lineTo(-21, 22); ctx.lineTo(-27, -15); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#7a2a13'; ctx.fillRect(-4, -22, 8, 42); ctx.fillRect(-17, -2, 34, 8); ctx.fillStyle = '#fff'; ctx.font = '900 12px Arial'; ctx.textAlign = 'center'; ctx.fillText('盾', 0, 6);
+    }
+    function drawGrunt() {
+      ctx.shadowColor = '#ff8a3d'; ctx.shadowBlur = 12; ctx.fillStyle = '#ff8a3d'; roundRect(-26, -25, 52, 50, 12, true, false); ctx.shadowBlur = 0;
+      ctx.fillStyle = '#3a1608'; ctx.fillRect(-12, -6, 8, 8); ctx.fillRect(4, -6, 8, 8); ctx.strokeStyle = '#3a1608'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 8, 10, 0, Math.PI); ctx.stroke();
+    }
+    function drawFlyer() {
+      ctx.shadowColor = '#b874ff'; ctx.shadowBlur = 18; ctx.fillStyle = '#b874ff'; ctx.beginPath(); ctx.ellipse(0, 0, 28, 20, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(184,116,255,0.42)'; ctx.beginPath(); ctx.ellipse(-32, -6, 20, 11, -0.35, 0, Math.PI * 2); ctx.ellipse(32, -6, 20, 11, 0.35, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0; ctx.fillStyle = '#fff'; ctx.font = '900 12px Arial'; ctx.textAlign = 'center'; ctx.fillText('空', 0, 5);
+    }
+    function drawSpike() {
+      ctx.shadowColor = '#d6e7f5'; ctx.shadowBlur = 12; ctx.fillStyle = '#d6e7f5';
+      for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.moveTo(i * 16, -28); ctx.lineTo(i * 16 + 10, 24); ctx.lineTo(i * 16 - 10, 24); ctx.closePath(); ctx.fill(); }
+      ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(255,75,75,0.55)'; roundRect(-46, 18, 92, 12, 5, true, false);
+    }
+
+    function drawCoin(t) {
+      const bob = Math.sin(t * 5) * 5;
+      const spin = 0.48 + Math.abs(Math.sin(t * 7)) * 0.52;
+      ctx.translate(0, -18 + bob);
+      ctx.shadowColor = '#ffd35c'; ctx.shadowBlur = 18;
+      ctx.fillStyle = '#ffd35c';
+      ctx.beginPath(); ctx.ellipse(0, 0, 18 * spin, 22, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = '#fff4b8'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(0, 0, 11 * spin, 15, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#9b5b00'; ctx.font = '900 13px Arial'; ctx.textAlign = 'center'; ctx.fillText('¥', 0, 5);
+    }
+
+    function drawHitbox() {
+      if (!player.hitbox) return;
+      ctx.save(); ctx.globalAlpha = 0.32 + Math.sin(game.time * 40) * 0.08;
+      ctx.fillStyle = player.hitbox.kind === 'slam' ? '#ffd35c' : '#29d5ff'; ctx.strokeStyle = player.hitbox.kind === 'slam' ? '#fff0a4' : '#a8efff'; ctx.lineWidth = 2;
+      for (const lane of player.hitbox.lanes) {
+        const p1 = projectLane(lane, player.hitbox.z1 - game.distance);
+        const p2 = projectLane(lane, player.hitbox.z2 - game.distance);
+        const w1 = 54 * p1.scale, w2 = 42 * p2.scale;
+        ctx.beginPath(); ctx.moveTo(p2.x - w2, p2.y); ctx.lineTo(p2.x + w2, p2.y); ctx.lineTo(p1.x + w1, p1.y); ctx.lineTo(p1.x - w1, p1.y); ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawAttackWaves() {
+      for (const w of game.waves) {
+        const t = 1 - w.life / w.max;
+        const alpha = Math.max(0, w.life / w.max);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = alpha * 0.78;
+        const color = w.kind === 'slam' ? '#ffd35c' : '#29d5ff';
+        const edge = w.kind === 'slam' ? '#fff4b8' : '#dff5ff';
+        for (const lane of w.lanes) {
+          const expand = 18 + t * 44;
+          const p1 = projectLane(lane, w.z1 - game.distance);
+          const p2 = projectLane(lane, w.z2 - game.distance);
+          const w1 = (66 + expand) * p1.scale;
+          const w2 = (44 + expand * 0.55) * p2.scale;
+          const grad = ctx.createLinearGradient(p2.x, p2.y, p1.x, p1.y);
+          grad.addColorStop(0, color + '22');
+          grad.addColorStop(0.45, color + 'AA');
+          grad.addColorStop(1, color + '11');
+          ctx.fillStyle = grad;
+          ctx.strokeStyle = edge;
+          ctx.lineWidth = w.kind === 'slam' ? 4 : 3;
+          ctx.beginPath();
+          ctx.moveTo(p2.x - w2, p2.y - expand * 0.25);
+          ctx.quadraticCurveTo((p1.x + p2.x) / 2, (p1.y + p2.y) / 2 - 28 - t * 36, p2.x + w2, p2.y - expand * 0.25);
+          ctx.lineTo(p1.x + w1, p1.y + expand * 0.18);
+          ctx.quadraticCurveTo(p1.x, p1.y + 34 + t * 28, p1.x - w1, p1.y + expand * 0.18);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          if (w.kind === 'slam') {
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.globalAlpha = alpha;
+            ctx.beginPath(); ctx.moveTo(p2.x, p2.y - 34 - t * 40); ctx.lineTo(p1.x, p1.y + 44 + t * 28); ctx.stroke();
+          }
+        }
+        ctx.restore();
+      }
+    }
+
+    function drawPlayer() {
+      const p = projectPlayer();
+      ctx.save(); ctx.translate(p.x, p.y); ctx.scale(p.scale, p.scale);
+      if (player.invulnT > 0 && Math.floor(game.time * 18) % 2 === 0) ctx.globalAlpha = 0.42;
+      ctx.shadowColor = player.airborne ? '#ffd35c' : '#29d5ff'; ctx.shadowBlur = player.airborne ? 24 : 14;
+      ctx.fillStyle = player.airborne ? '#ffd35c' : '#29d5ff'; ctx.beginPath(); ctx.arc(0, -32, 18, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#0b1722'; ctx.beginPath(); ctx.arc(-6, -35, 3, 0, Math.PI * 2); ctx.arc(6, -35, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = player.airborne ? '#ffd35c' : '#29d5ff'; ctx.lineWidth = 9; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(0, 34); ctx.stroke();
+      const swing = player.attackT / player.attackDur; ctx.beginPath();
+      if (player.attack === 'slam') { ctx.moveTo(-20, 0); ctx.lineTo(0, -42 + swing * 76); ctx.lineTo(20, 0); }
+      else if (player.attack === 'sweep') { const d = player.sweepDir; ctx.moveTo(-20*d, -4); ctx.lineTo(48*d, -8 + Math.sin(swing*Math.PI)*8); ctx.moveTo(0, 6); ctx.lineTo(-30*d, 18); }
+      else { ctx.moveTo(-20, -2); ctx.lineTo(-32, 20); ctx.moveTo(20, -2); ctx.lineTo(32, 20); }
+      ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, 34); ctx.lineTo(-20, 58); ctx.moveTo(0, 34); ctx.lineTo(20, 58); ctx.stroke();
+      ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(0,0,0,0.30)'; ctx.beginPath(); ctx.ellipse(0, 92 + jumpHeight()/p.scale, 38, 10, 0, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+
+    function drawParticles() {
+      for (const p of game.particles) { ctx.globalAlpha = Math.max(0, p.life / p.max); ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill(); }
+      ctx.globalAlpha = 1;
+    }
+    function drawSpeedLines() {
+      ctx.save(); ctx.globalAlpha = 0.12;
+      for (let i = 0; i < 18; i++) {
+        const x = (i * 71 + game.time * 180) % W;
+        const y = H * 0.2 + ((i * 97 + game.time * 420) % (H * 0.72));
+        ctx.strokeStyle = '#dff5ff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 18, y + 42); ctx.stroke();
+      }
+      ctx.restore();
+    }
+    function drawHitStopOverlay() {
+      ctx.save(); ctx.fillStyle = `rgba(255,255,255,${0.06 + game.hitStop * 0.45})`; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#ffd35c'; ctx.font = '900 34px Microsoft YaHei'; ctx.textAlign = 'center'; ctx.fillText('HIT STOP', W / 2, H * 0.42); ctx.restore();
+    }
+    function roundRect(x, y, w, h, r, fill, stroke) {
+      ctx.beginPath(); ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r); ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h); ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r); ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath(); if (fill) ctx.fill(); if (stroke) ctx.stroke();
+    }
+
+    function nearestTarget() {
+      let best = null;
+      for (const o of game.objects) {
+        if (!o.alive || o.hit) continue;
+        const dz = o.z - game.distance;
+        if (dz >= -30 && (!best || dz < best.dz)) best = { o, dz };
+      }
+      return best;
+    }
+    function updateUi() {
+      ui.score.textContent = game.score; ui.coins.textContent = game.coins; ui.hp.textContent = game.hp;
+      ui.distanceText.textContent = `${Math.round(game.distance)} m`;
+      ui.laneText.textContent = laneNames[player.targetLane];
+      ui.airText.textContent = player.airborne ? `Air ${(player.jumpDur - player.jumpT).toFixed(2)}s` : 'Ground';
+      ui.attackText.textContent = player.attack ? (player.attack === 'slam' ? '下劈' : '横扫') : 'None';
+      const target = nearestTarget(); ui.targetText.textContent = target ? `${Math.round(target.dz)} m / ${laneNames[target.o.lane]}` : '--';
+      ui.hitboxText.textContent = player.hitbox ? `${Math.round(player.hitbox.z1 - game.distance)}-${Math.round(player.hitbox.z2 - game.distance)}m / ${laneListText(player.hitbox.lanes)}` : '关闭';
+      ui.hitstopText.textContent = `${Math.round(game.hitStop * 1000)} ms`;
+      ui.status.textContent = game.gameOver ? '游戏结束' : (player.airborne ? (player.attack ? `前进中空中${player.attack === 'slam' ? '下劈' : '横扫'}` : '前进中空中状态') : (player.attack ? `前进中${player.attack === 'slam' ? '下劈' : '横扫'}` : '向前奔跑'));
+      setCheck(ui.checkWorld, game.checks.world); setCheck(ui.checkAirCombo, game.checks.airCombo); setCheck(ui.checkSweep, game.checks.sweep); setCheck(ui.checkSlam, game.checks.slam); setCheck(ui.checkSpike, game.checks.spike);
+    }
+    function setCheck(el, ok) { el.className = 'dot ' + (ok ? 'ok' : ''); }
+
+    let last = performance.now();
+    function loop(now) { const dt = Math.min(0.033, (now - last) / 1000); last = now; update(dt); draw(); requestAnimationFrame(loop); }
+    window.addEventListener('resize', resize);
+    window.addEventListener('keydown', e => {
+      if (e.repeat) return; const k = e.key.toLowerCase();
+      if (game.gameOver && k !== 'r') return;
+      if (k === 'a' || e.key === 'arrowleft') inputMove(-1);
+      if (k === 'd' || e.key === 'arrowright') inputMove(1);
+      if (k === 'w' || e.key === 'arrowup' || e.key === ' ') inputJump();
+      if (k === 's' || e.key === 'arrowdown') inputSlam();
+      if (k === 'q') inputSweep(-1);
+      if (k === 'e') inputSweep(1);
+      if (k === 'r') resetGame();
+    });
+    document.getElementById('leftBtn').onclick = () => inputMove(-1);
+    document.getElementById('rightBtn').onclick = () => inputMove(1);
+    document.getElementById('jumpBtn').onclick = () => inputJump();
+    document.getElementById('slamBtn').onclick = () => inputSlam();
+    document.getElementById('sweepLBtn').onclick = () => inputSweep(-1);
+    document.getElementById('sweepRBtn').onclick = () => inputSweep(1);
+    document.getElementById('resetBtn').onclick = () => resetGame();
+    document.getElementById('restartGameBtn').onclick = () => resetGame();
+    ui.cameraBtn.onclick = () => startCameraGesture();
+    resize(); resetGame(); loadPoseDetector(); requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
