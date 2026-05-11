@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>体感收纳柜 MVP 原型</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: "Microsoft YaHei", Arial, sans-serif;
+      background: linear-gradient(180deg, #fff7e8 0%, #f0e2c7 100%);
+      color: #4b3324;
+      user-select: none;
+    }
+    #game {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      min-width: 1000px;
+      min-height: 650px;
+      cursor: none;
+    }
+    .header {
+      position: absolute;
+      left: 34px;
+      right: 34px;
+      top: 22px;
+      height: 70px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .title h1 {
+      margin: 0 0 8px 0;
+      font-size: 30px;
+      letter-spacing: 1px;
+    }
+    .title p {
+      margin: 0;
+      font-size: 15px;
+      color: #815f45;
+    }
+    .hud {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .pill {
+      min-width: 112px;
+      padding: 11px 16px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.72);
+      border: 2px solid rgba(116,82,54,0.16);
+      text-align: center;
+      font-weight: 700;
+      color: #68462e;
+      box-shadow: 0 8px 20px rgba(80,50,28,0.08);
+    }
+    .stage {
+      position: absolute;
+      inset: 104px 28px 28px 28px;
+      display: grid;
+      grid-template-columns: 250px minmax(560px, 1fr) 250px;
+      gap: 28px;
+    }
+    .panel {
+      border-radius: 28px;
+      background: rgba(255,255,255,0.58);
+      border: 2px solid rgba(116,82,54,0.14);
+      box-shadow: 0 16px 36px rgba(80,50,28,0.12);
+      position: relative;
+      overflow: hidden;
+    }
+    .left-panel {
+      padding: 22px 18px;
+    }
+    .panel-title {
+      text-align: center;
+      font-weight: 800;
+      font-size: 18px;
+      margin-bottom: 16px;
+      color: #6e4930;
+    }
+    .item-bank {
+      position: relative;
+      height: calc(100% - 52px);
+      border-radius: 22px;
+      background: rgba(255,251,242,0.88);
+      border: 2px dashed rgba(141,94,54,0.22);
+    }
+    .cabinet-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 30px;
+    }
+    .cabinet {
+      position: relative;
+      width: min(760px, 100%);
+      height: min(520px, 100%);
+      min-height: 500px;
+      border-radius: 34px;
+      background: #9a6a43;
+      border: 8px solid #70492c;
+      box-shadow: inset 0 0 0 8px rgba(255,224,173,0.16), 0 24px 48px rgba(73,42,20,0.20);
+      padding: 22px;
+    }
+    .cabinet::before {
+      content: "";
+      position: absolute;
+      inset: 8px;
+      border-radius: 24px;
+      border: 2px solid rgba(255,236,202,0.28);
+      pointer-events: none;
+    }
+    .slot {
+      position: absolute;
+      border-radius: 18px;
+      background: #f9e2b6;
+      border: 5px solid #6e4527;
+      box-shadow: inset 0 8px 16px rgba(79,45,20,0.17);
+      transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+      overflow: hidden;
+    }
+    .slot .slot-label {
+      position: absolute;
+      left: 10px;
+      top: 9px;
+      padding: 4px 9px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.68);
+      color: #68462e;
+      font-size: 13px;
+      font-weight: 800;
+      z-index: 2;
+    }
+    .slot .slot-hint {
+      position: absolute;
+      right: 10px;
+      bottom: 8px;
+      color: rgba(89,58,37,0.55);
+      font-size: 12px;
+      font-weight: 700;
+      z-index: 2;
+    }
+    .slot.good-target {
+      background: #c6f0cf;
+      border-color: #2f9c52;
+      box-shadow: inset 0 8px 16px rgba(79,45,20,0.10), 0 0 0 8px rgba(71,187,101,0.22);
+      transform: scale(1.018);
+    }
+    .slot.near-wrong {
+      background: #ffd4c8;
+      border-color: #d45832;
+      box-shadow: inset 0 8px 16px rgba(79,45,20,0.10), 0 0 0 8px rgba(216,88,50,0.18);
+    }
+    .slot.completed {
+      background: #d7edff;
+      border-color: #3d83bf;
+    }
+    .stored-item {
+      position: absolute;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 800;
+      color: #fffaf2;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.22);
+      box-shadow: 0 6px 14px rgba(65,36,18,0.18);
+      pointer-events: none;
+    }
+    .item {
+      position: absolute;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+      color: #fffaf2;
+      font-weight: 900;
+      font-size: 15px;
+      text-align: center;
+      line-height: 1.15;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.28);
+      box-shadow: 0 10px 18px rgba(78,42,18,0.20);
+      border: 3px solid rgba(255,255,255,0.54);
+      transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease, opacity 0.2s ease;
+      z-index: 5;
+    }
+    .item.hovered {
+      transform: scale(1.08);
+      box-shadow: 0 0 0 8px rgba(255,231,153,0.54), 0 12px 20px rgba(78,42,18,0.20);
+      filter: saturate(1.12);
+    }
+    .item.held {
+      transform: scale(1.12) rotate(-2deg);
+      box-shadow: 0 0 0 10px rgba(95,164,255,0.25), 0 18px 30px rgba(78,42,18,0.28);
+      z-index: 30;
+      pointer-events: none;
+    }
+    .item.placed {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .camera-box {
+      position: relative;
+      height: 150px;
+      border-radius: 22px;
+      overflow: hidden;
+      background: #2e2118;
+      border: 4px solid rgba(141,94,54,0.28);
+      margin-bottom: 14px;
+      transition: border-color 0.12s ease, box-shadow 0.12s ease;
+    }
+    .camera-box.hand-on {
+      border-color: #2fbd67;
+      box-shadow: 0 0 0 7px rgba(47,189,103,0.24);
+    }
+    .camera-box.hand-off {
+      border-color: #d45832;
+      box-shadow: 0 0 0 7px rgba(212,88,50,0.16);
+    }
+    .camera-box.fist-on {
+      border-color: #2d74c4;
+      box-shadow: 0 0 0 7px rgba(45,116,196,0.24);
+    }
+    #cameraVideo, #cameraCanvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+    }
+    #cameraCanvas { z-index: 2; }
+    .camera-badge {
+      position: absolute;
+      left: 10px;
+      top: 10px;
+      z-index: 3;
+      padding: 7px 12px;
+      border-radius: 14px;
+      background: rgba(255,250,242,0.9);
+      color: #5c3c28;
+      font-size: 13px;
+      font-weight: 900;
+    }
+    .camera-badge.hand-on {
+      background: rgba(213,255,225,0.94);
+      color: #176c35;
+    }
+    .camera-badge.hand-off {
+      background: rgba(255,232,224,0.94);
+      color: #a84426;
+    }
+    .camera-badge.fist-on {
+      background: rgba(225,240,255,0.94);
+      color: #245c9e;
+    }
+    .debug-line {
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      bottom: 8px;
+      z-index: 3;
+      padding: 6px 8px;
+      border-radius: 10px;
+      background: rgba(0,0,0,0.45);
+      color: white;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .mode-line {
+      margin: 8px 0 0 0;
+      font-size: 13px;
+      color: #78563d;
+      line-height: 1.45;
+    }
+    .right-panel {
+      padding: 22px 18px;
+    }
+    .gesture-card {
+      border-radius: 22px;
+      background: rgba(255,251,242,0.9);
+      border: 2px solid rgba(141,94,54,0.18);
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    .gesture-card h3 {
+      margin: 0 0 10px 0;
+      font-size: 17px;
+      color: #6e4930;
+    }
+    .gesture-card p {
+      margin: 8px 0;
+      font-size: 14px;
+      line-height: 1.45;
+      color: #78563d;
+    }
+    .status {
+      min-height: 92px;
+      border-radius: 20px;
+      padding: 16px;
+      background: #fff3d8;
+      border: 2px solid rgba(141,94,54,0.18);
+      font-size: 18px;
+      font-weight: 800;
+      line-height: 1.45;
+      color: #6e4930;
+    }
+    .status.good { background: #e5ffe9; color: #276a38; }
+    .status.bad { background: #ffe7df; color: #a84426; }
+    .status.done { background: #e5f2ff; color: #225b91; }
+    .legend {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      margin-top: 12px;
+      font-size: 13px;
+      color: #725039;
+    }
+    .legend-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      flex: 0 0 auto;
+    }
+    .hand-cursor {
+      position: absolute;
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      left: 50%;
+      top: 50%;
+      margin-left: -27px;
+      margin-top: -27px;
+      border: 4px solid #2d74c4;
+      background: rgba(255,255,255,0.56);
+      z-index: 100;
+      pointer-events: none;
+      box-shadow: 0 0 0 8px rgba(45,116,196,0.16), 0 8px 20px rgba(38,72,117,0.20);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 900;
+      color: #245c9e;
+      transition: width 0.08s ease, height 0.08s ease, margin 0.08s ease, border-color 0.08s ease, color 0.08s ease;
+    }
+    .hand-cursor.fist {
+      width: 46px;
+      height: 46px;
+      margin-left: -23px;
+      margin-top: -23px;
+      border-color: #d45a30;
+      color: #b34825;
+      box-shadow: 0 0 0 10px rgba(212,90,48,0.18), 0 8px 20px rgba(117,55,38,0.22);
+    }
+    .toast {
+      position: absolute;
+      left: 50%;
+      bottom: 34px;
+      transform: translateX(-50%);
+      padding: 14px 22px;
+      border-radius: 18px;
+      background: rgba(67,43,28,0.88);
+      color: #fffaf2;
+      font-size: 17px;
+      font-weight: 800;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      z-index: 120;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(-8px);
+    }
+    .complete-modal {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(72,45,25,0.28);
+      z-index: 90;
+    }
+    .complete-modal.show { display: flex; }
+    .complete-card {
+      width: 420px;
+      border-radius: 30px;
+      background: #fffaf2;
+      border: 3px solid rgba(116,82,54,0.2);
+      box-shadow: 0 24px 60px rgba(45,28,16,0.24);
+      padding: 30px;
+      text-align: center;
+      color: #5c3c28;
+    }
+    .complete-card h2 {
+      margin: 0 0 12px 0;
+      font-size: 30px;
+    }
+    .complete-card p {
+      margin: 8px 0;
+      font-size: 17px;
+      color: #76543d;
+    }
+    .complete-card button, .reset-btn {
+      border: 0;
+      border-radius: 16px;
+      padding: 12px 18px;
+      background: #2f8f51;
+      color: white;
+      font-weight: 900;
+      font-size: 15px;
+      cursor: pointer;
+      box-shadow: 0 8px 18px rgba(47,143,81,0.22);
+    }
+    .reset-btn {
+      width: 100%;
+      margin-top: 12px;
+      background: #8b6244;
+      box-shadow: 0 8px 18px rgba(139,98,68,0.22);
+    }
+    @keyframes wrongShake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-8px); }
+      75% { transform: translateX(8px); }
+    }
+    .shake { animation: wrongShake 0.24s ease; }
+  </style>
+</head>
+<body>
+  <div id="game">
+    <div class="header">
+      <div class="title">
+        <h1>体感收纳柜 MVP 原型</h1>
+        <p>动作规则：单手移动到物品上 → 握拳选中 → 移动到对应格子 → 松手放下</p>
+      </div>
+      <div class="hud">
+        <div class="pill">完成 <span id="placedCount">0</span>/<span id="totalCount">8</span></div>
+        <div class="pill">正确 <span id="score">0</span></div>
+        <div class="pill">失误 <span id="miss">0</span></div>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="panel left-panel">
+        <div class="panel-title">待收纳物品</div>
+        <div id="itemBank" class="item-bank"></div>
+      </div>
+
+      <div class="panel cabinet-wrap">
+        <div id="cabinet" class="cabinet">
+          <div class="slot" data-type="candy" style="left: 24px; top: 24px; width: 112px; height: 112px;">
+            <div class="slot-label">糖果格</div><div class="slot-hint">糖果</div>
+          </div>
+          <div class="slot" data-type="block" style="left: 152px; top: 24px; width: 112px; height: 112px;">
+            <div class="slot-label">积木格</div><div class="slot-hint">积木</div>
+          </div>
+          <div class="slot" data-type="long" style="left: 282px; top: 24px; width: 300px; height: 112px;">
+            <div class="slot-label">长条格</div><div class="slot-hint">面包</div>
+          </div>
+          <div class="slot" data-type="bottle" style="right: 24px; top: 24px; width: 132px; height: 250px;">
+            <div class="slot-label">竖窄格</div><div class="slot-hint">瓶子</div>
+          </div>
+          <div class="slot" data-type="medium" style="left: 24px; top: 158px; width: 220px; height: 132px;">
+            <div class="slot-label">中格</div><div class="slot-hint">盒装物</div>
+          </div>
+          <div class="slot" data-type="flat" style="left: 266px; top: 158px; width: 316px; height: 92px;">
+            <div class="slot-label">扁平格</div><div class="slot-hint">书 / 盘子</div>
+          </div>
+          <div class="slot" data-type="large" style="left: 266px; top: 278px; width: 316px; height: 176px;">
+            <div class="slot-label">大格</div><div class="slot-hint">大玩偶</div>
+          </div>
+          <div class="slot" data-type="toy" style="left: 24px; top: 320px; width: 220px; height: 132px;">
+            <div class="slot-label">玩具格</div><div class="slot-hint">小车</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel right-panel">
+        <div class="panel-title">体感状态</div>
+        <div id="status" class="status">正在启动摄像头。也可以用鼠标作为备用输入。</div>
+        <div id="cameraBox" class="camera-box">
+          <video id="cameraVideo" autoplay playsinline muted></video>
+          <canvas id="cameraCanvas"></canvas>
+          <div id="cameraBadge" class="camera-badge">摄像头启动中</div>
+          <div id="cameraDebug" class="debug-line">等待手掌进入画面</div>
+        </div>
+        <div class="gesture-card">
+          <h3>当前输入模式</h3>
+          <p id="inputMode">优先使用摄像头体感输入。</p>
+          <p class="mode-line">手掌中心 = 单手移动</p>
+          <p class="mode-line">握拳 = 选中物品</p>
+          <p class="mode-line">张手 = 放下物品</p>
+        </div>
+        <div class="gesture-card">
+          <h3>鼠标备用调试</h3>
+          <p>鼠标移动 = 单手移动</p>
+          <p>按住鼠标 = 握拳选中</p>
+          <p>松开鼠标 = 张手放下</p>
+        </div>
+        <div class="gesture-card">
+          <h3>吸附规则</h3>
+          <p>拿起物品后，对应格子会高亮。</p>
+          <p>移动到正确格子附近松手，物品会自动放入。</p>
+          <p>放错格子会弹回待收纳区。</p>
+        </div>
+        <div class="legend">
+          <div class="legend-row"><span class="dot" style="background:#c6f0cf"></span>正确目标高亮</div>
+          <div class="legend-row"><span class="dot" style="background:#ffd4c8"></span>错误目标提示</div>
+          <div class="legend-row"><span class="dot" style="background:#d7edff"></span>已经完成的格子</div>
+        </div>
+        <button class="reset-btn" onclick="resetGame()">重新开始</button>
+      </div>
+    </div>
+
+    <div id="handCursor" class="hand-cursor">手掌</div>
+    <div id="toast" class="toast"></div>
+    <div id="completeModal" class="complete-modal">
+      <div class="complete-card">
+        <h2>收纳完成</h2>
+        <p>所有物品都放进了正确格子。</p>
+        <p>正确：<span id="finalScore">0</span>　失误：<span id="finalMiss">0</span></p>
+        <button onclick="resetGame()">再玩一次</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const game = document.getElementById("game");
+    const itemBank = document.getElementById("itemBank");
+    const cabinet = document.getElementById("cabinet");
+    const handCursor = document.getElementById("handCursor");
+    const cameraBox = document.getElementById("cameraBox");
+    const cameraVideo = document.getElementById("cameraVideo");
+    const cameraCanvas = document.getElementById("cameraCanvas");
+    const cameraBadge = document.getElementById("cameraBadge");
+    const cameraDebug = document.getElementById("cameraDebug");
+    const inputModeEl = document.getElementById("inputMode");
+    const cameraCtx = cameraCanvas.getContext("2d");
+    const statusEl = document.getElementById("status");
+    const toastEl = document.getElementById("toast");
+    const placedCountEl = document.getElementById("placedCount");
+    const totalCountEl = document.getElementById("totalCount");
+    const scoreEl = document.getElementById("score");
+    const missEl = document.getElementById("miss");
+    const completeModal = document.getElementById("completeModal");
+    const finalScore = document.getElementById("finalScore");
+    const finalMiss = document.getElementById("finalMiss");
+
+    const itemDefs = [
+      { id: "candy", name: "糖果", type: "candy", w: 68, h: 50, color: "#e35d83", x: 34, y: 34 },
+      { id: "block", name: "积木", type: "block", w: 62, h: 62, color: "#4f9fdd", x: 140, y: 96 },
+      { id: "bread", name: "长面包", type: "long", w: 134, h: 42, color: "#c8892d", x: 42, y: 142 },
+      { id: "bottle", name: "饮料瓶", type: "bottle", w: 52, h: 106, color: "#36a784", x: 148, y: 214 },
+      { id: "box", name: "饼干盒", type: "medium", w: 94, h: 68, color: "#b878e6", x: 32, y: 282 },
+      { id: "book", name: "书本", type: "flat", w: 112, h: 38, color: "#4976d1", x: 90, y: 374 },
+      { id: "bear", name: "大玩偶", type: "large", w: 116, h: 116, color: "#d36b3f", x: 28, y: 442 },
+      { id: "car", name: "玩具车", type: "toy", w: 104, h: 58, color: "#5d7f35", x: 128, y: 500 }
+    ];
+
+    let items = [];
+    let heldItem = null;
+    let hoveredItem = null;
+    let pointer = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    let isFist = false;
+    let placed = 0;
+    let score = 0;
+    let miss = 0;
+    let cameraActive = false;
+    let detector = null;
+    let mpHands = null;
+    let latestMpHand = null;
+    let latestMpSeenAt = 0;
+    let lastGestureClosed = false;
+    let lastHandSeenAt = 0;
+    let smoothedHand = null;
+    let lastRawHand = null;
+    let handMotion = 0;
+
+    function initItems() {
+      itemBank.innerHTML = "";
+      items = itemDefs.map(def => {
+        const el = document.createElement("div");
+        el.className = "item";
+        el.dataset.id = def.id;
+        el.dataset.type = def.type;
+        el.textContent = def.name;
+        el.style.width = def.w + "px";
+        el.style.height = def.h + "px";
+        el.style.left = def.x + "px";
+        el.style.top = def.y + "px";
+        el.style.background = def.color;
+        itemBank.appendChild(el);
+        return { ...def, el, placed: false, homeX: def.x, homeY: def.y };
+      });
+      totalCountEl.textContent = items.length;
+    }
+
+    function setCameraState(mode, text, debugText) {
+      cameraBox.classList.remove("hand-on", "hand-off", "fist-on");
+      cameraBadge.classList.remove("hand-on", "hand-off", "fist-on");
+      if (mode) {
+        cameraBox.classList.add(mode);
+        cameraBadge.classList.add(mode);
+      }
+      cameraBadge.textContent = text;
+      if (debugText) cameraDebug.textContent = debugText;
+    }
+
+    function setStatus(text, mode) {
+      statusEl.textContent = text;
+      statusEl.className = "status" + (mode ? " " + mode : "");
+    }
+
+    function showToast(text) {
+      toastEl.textContent = text;
+      toastEl.classList.add("show");
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => toastEl.classList.remove("show"), 1100);
+    }
+
+    function centerOfRect(rect) {
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    }
+
+    function distance(a, b) {
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function findHoveredItem() {
+      if (heldItem) return null;
+      let nearest = null;
+      let nearestDist = Infinity;
+      items.forEach(item => {
+        if (item.placed) return;
+        const rect = item.el.getBoundingClientRect();
+        const center = centerOfRect(rect);
+        const d = distance(pointer, center);
+        const threshold = Math.max(rect.width, rect.height) * 0.72 + 24;
+        if (d < threshold && d < nearestDist) {
+          nearest = item;
+          nearestDist = d;
+        }
+      });
+      return nearest;
+    }
+
+    function getNearSlot() {
+      const slots = [...document.querySelectorAll(".slot")];
+      let nearest = null;
+      let nearestDist = Infinity;
+      slots.forEach(slot => {
+        const rect = slot.getBoundingClientRect();
+        const expanded = 36;
+        const inside = pointer.x >= rect.left - expanded && pointer.x <= rect.right + expanded && pointer.y >= rect.top - expanded && pointer.y <= rect.bottom + expanded;
+        const center = centerOfRect(rect);
+        const d = distance(pointer, center);
+        if (inside && d < nearestDist) {
+          nearest = slot;
+          nearestDist = d;
+        }
+      });
+      return nearest;
+    }
+
+    function updateHighlights() {
+      document.querySelectorAll(".slot").forEach(slot => {
+        slot.classList.remove("good-target", "near-wrong");
+        if (slot.dataset.filled === "true") slot.classList.add("completed");
+      });
+      items.forEach(item => item.el.classList.remove("hovered"));
+
+      hoveredItem = findHoveredItem();
+      if (hoveredItem) hoveredItem.el.classList.add("hovered");
+
+      if (heldItem) {
+        const nearSlot = getNearSlot();
+        document.querySelectorAll(".slot").forEach(slot => {
+          if (slot.dataset.type === heldItem.type && slot.dataset.filled !== "true") {
+            slot.classList.add("good-target");
+          }
+        });
+        if (nearSlot && nearSlot.dataset.type !== heldItem.type) {
+          nearSlot.classList.add("near-wrong");
+        }
+      }
+    }
+
+    function moveHeldItem() {
+      if (!heldItem) return;
+      const bankRect = itemBank.getBoundingClientRect();
+      const gameRect = game.getBoundingClientRect();
+      heldItem.el.style.left = (pointer.x - gameRect.left - heldItem.w / 2) + "px";
+      heldItem.el.style.top = (pointer.y - gameRect.top - heldItem.h / 2) + "px";
+      if (heldItem.el.parentElement !== game) {
+        const currentRect = heldItem.el.getBoundingClientRect();
+        game.appendChild(heldItem.el);
+        heldItem.el.style.left = (currentRect.left - gameRect.left) + "px";
+        heldItem.el.style.top = (currentRect.top - gameRect.top) + "px";
+      }
+    }
+
+    function grabItem() {
+      if (heldItem || !hoveredItem) return;
+      heldItem = hoveredItem;
+      heldItem.el.classList.add("held");
+      setStatus("已握拳选中：" + heldItem.name + "。移动到对应格子后松手放下。", "good");
+      showToast("握拳抓取：" + heldItem.name);
+      moveHeldItem();
+      updateHighlights();
+    }
+
+    function releaseItem() {
+      if (!heldItem) return;
+      const target = getNearSlot();
+      if (target && target.dataset.type === heldItem.type && target.dataset.filled !== "true") {
+        placeIntoSlot(heldItem, target);
+      } else {
+        miss++;
+        missEl.textContent = miss;
+        returnHome(heldItem);
+        if (target) {
+          target.classList.add("shake");
+          setTimeout(() => target.classList.remove("shake"), 260);
+          setStatus("放错了：这个格子不适合 " + heldItem.name + "。", "bad");
+          showToast("格子不匹配，物品弹回");
+        } else {
+          setStatus("没有放到格子附近，物品回到待收纳区。", "bad");
+          showToast("没有进入格子范围");
+        }
+      }
+      heldItem.el.classList.remove("held");
+      heldItem = null;
+      updateHud();
+      updateHighlights();
+    }
+
+    function returnHome(item) {
+      if (item.el.parentElement !== itemBank) itemBank.appendChild(item.el);
+      item.el.style.left = item.homeX + "px";
+      item.el.style.top = item.homeY + "px";
+    }
+
+    function placeIntoSlot(item, slot) {
+      item.placed = true;
+      slot.dataset.filled = "true";
+      item.el.classList.add("placed");
+
+      const stored = document.createElement("div");
+      stored.className = "stored-item";
+      stored.textContent = item.name;
+      stored.style.background = item.color;
+
+      const slotW = slot.clientWidth;
+      const slotH = slot.clientHeight;
+      const margin = 18;
+      const scale = Math.min((slotW - margin * 2) / item.w, (slotH - margin * 2) / item.h, 1.15);
+      const w = Math.max(42, item.w * scale);
+      const h = Math.max(32, item.h * scale);
+      stored.style.width = w + "px";
+      stored.style.height = h + "px";
+      stored.style.left = ((slotW - w) / 2) + "px";
+      stored.style.top = ((slotH - h) / 2 + 8) + "px";
+      slot.appendChild(stored);
+
+      placed++;
+      score++;
+      setStatus("放置成功：" + item.name + " 已进入正确格子。", "good");
+      showToast("自动吸附成功");
+      if (placed >= items.length) {
+        setTimeout(() => finishGame(), 360);
+      }
+    }
+
+    function finishGame() {
+      finalScore.textContent = score;
+      finalMiss.textContent = miss;
+      completeModal.classList.add("show");
+      setStatus("全部收纳完成，可以进入下一关。", "done");
+    }
+
+    function updateHud() {
+      placedCountEl.textContent = placed;
+      scoreEl.textContent = score;
+      missEl.textContent = miss;
+    }
+
+    function updatePointer(e, source = "mouse") {
+      if (source === "mouse" && cameraActive) {
+        inputModeEl.textContent = "摄像头已启用；鼠标仍可作为备用调试输入。";
+      }
+      pointer.x = e.clientX;
+      pointer.y = e.clientY;
+      handCursor.style.left = pointer.x + "px";
+      handCursor.style.top = pointer.y + "px";
+      moveHeldItem();
+      updateHighlights();
+      if (!heldItem && hoveredItem && !isFist) {
+        setStatus("手掌已移动到 " + hoveredItem.name + " 上，握拳即可选中。", "good");
+        if (source === "camera") inputModeEl.textContent = "体感输入有反馈：当前指向 " + hoveredItem.name + "，握拳即可抓取。";
+      } else if (!heldItem && !isFist) {
+        setStatus(cameraActive ? "摄像头体感中：移动手掌到物品上，握拳抓取。" : "移动手掌到物品上，按住鼠标模拟握拳抓取。");
+        if (source === "camera") inputModeEl.textContent = "已检测到手掌移动；请把光标移动到左侧物品上。";
+      }
+    }
+
+    game.addEventListener("mousemove", updatePointer);
+    game.addEventListener("mousedown", e => {
+      isFist = true;
+      handCursor.classList.add("fist");
+      handCursor.textContent = "握拳";
+      updatePointer(e, "mouse");
+      grabItem();
+    });
+    window.addEventListener("mouseup", e => {
+      isFist = false;
+      handCursor.classList.remove("fist");
+      handCursor.textContent = "手掌";
+      pointer.x = e.clientX;
+      pointer.y = e.clientY;
+      releaseItem();
+    });
+
+    game.addEventListener("touchmove", e => {
+      e.preventDefault();
+      const t = e.touches[0];
+      if (t) updatePointer(t);
+    }, { passive: false });
+    game.addEventListener("touchstart", e => {
+      e.preventDefault();
+      const t = e.touches[0];
+      if (!t) return;
+      isFist = true;
+      handCursor.classList.add("fist");
+      handCursor.textContent = "握拳";
+      updatePointer(t);
+      grabItem();
+    }, { passive: false });
+    game.addEventListener("touchend", e => {
+      e.preventDefault();
+      isFist = false;
+      handCursor.classList.remove("fist");
+      handCursor.textContent = "手掌";
+      releaseItem();
+    }, { passive: false });
+
+    function resetGame() {
+      completeModal.classList.remove("show");
+      document.querySelectorAll(".stored-item").forEach(el => el.remove());
+      document.querySelectorAll(".slot").forEach(slot => {
+        delete slot.dataset.filled;
+        slot.classList.remove("completed", "good-target", "near-wrong", "shake");
+      });
+      heldItem = null;
+      hoveredItem = null;
+      placed = 0;
+      score = 0;
+      miss = 0;
+      initItems();
+      updateHud();
+      setStatus(cameraActive ? "摄像头体感中：移动手掌到物品上，握拳抓取。" : "移动手掌到物品上，按住鼠标模拟握拳抓取。");
+      updateHighlights();
+    }
+
+    async function startCameraInput() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setCameraState("hand-off", "无摄像头权限", "浏览器不支持摄像头");
+        inputModeEl.textContent = "当前浏览器不支持摄像头，使用鼠标备用输入。";
+        setStatus("当前浏览器不支持摄像头，先用鼠标模拟体感。", "bad");
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 640, height: 480, facingMode: "user" },
+          audio: false
+        });
+        cameraVideo.srcObject = stream;
+        await cameraVideo.play();
+        cameraActive = true;
+        setCameraState(null, "摄像头已开启", "正在加载手势模型");
+        inputModeEl.textContent = "摄像头体感输入已开启。将手掌放到画面内开始操作。";
+        setStatus("摄像头已开启：张开手掌移动，握拳抓取物品。", "good");
+        await loadHandDetector();
+        requestAnimationFrame(trackHandLoop);
+      } catch (err) {
+        setCameraState("hand-off", "摄像头不可用", "请检查浏览器摄像头权限");
+        inputModeEl.textContent = "摄像头无法启动，使用鼠标备用输入。";
+        setStatus("摄像头无法启动：请检查浏览器权限，或先用鼠标备用调试。", "bad");
+      }
+    }
+
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = src;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+
+    async function loadHandDetector() {
+      try {
+        setCameraState(null, "加载手势模型", "MediaPipe Hands 加载中，请稍等");
+        await loadScript("https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.min.js");
+        mpHands = new Hands({
+          locateFile: file => "https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/" + file
+        });
+        mpHands.setOptions({
+          maxNumHands: 1,
+          modelComplexity: 1,
+          minDetectionConfidence: 0.45,
+          minTrackingConfidence: 0.45,
+          selfieMode: true
+        });
+        mpHands.onResults(results => {
+          if (results.multiHandLandmarks && results.multiHandLandmarks[0]) {
+            latestMpHand = normalizeMpHand(results.multiHandLandmarks[0], cameraVideo.videoWidth, cameraVideo.videoHeight);
+            latestMpSeenAt = performance.now();
+          } else {
+            latestMpHand = null;
+          }
+        });
+        detector = { type: "mediapipe-direct" };
+        setCameraState("hand-off", "未检测到手掌", "把完整手掌放进取景框");
+      } catch (err) {
+        detector = null;
+        mpHands = null;
+        setCameraState("hand-off", "模型加载失败", "可继续用鼠标备用输入");
+        inputModeEl.textContent = "摄像头画面已开启，但 MediaPipe Hands 加载失败。可继续用鼠标备用输入。";
+        setStatus("手势模型加载失败。可能是网络或 CDN 被拦截，先用鼠标备用调试。", "bad");
+      }
+    }
+
+    const mpNames = [
+      "wrist",
+      "thumb_cmc", "thumb_mcp", "thumb_ip", "thumb_tip",
+      "index_finger_mcp", "index_finger_pip", "index_finger_dip", "index_finger_tip",
+      "middle_finger_mcp", "middle_finger_pip", "middle_finger_dip", "middle_finger_tip",
+      "ring_finger_mcp", "ring_finger_pip", "ring_finger_dip", "ring_finger_tip",
+      "pinky_finger_mcp", "pinky_finger_pip", "pinky_finger_dip", "pinky_finger_tip"
+    ];
+
+    function normalizeMpHand(landmarks, width, height) {
+      return {
+        keypoints: landmarks.map((p, index) => ({
+          x: p.x * width,
+          y: p.y * height,
+          z: p.z || 0,
+          name: mpNames[index] || ("point_" + index)
+        }))
+      };
+    }
+
+    function isFiniteNumber(value) {
+      return typeof value === "number" && Number.isFinite(value);
+    }
+
+    function isValidPoint(point) {
+      return point && isFiniteNumber(point.x) && isFiniteNumber(point.y);
+    }
+
+    function getKeypoint(hand, name, index) {
+      if (!hand || !Array.isArray(hand.keypoints)) return null;
+      const named = hand.keypoints.find(p => p.name === name);
+      if (isValidPoint(named)) return named;
+      const indexed = hand.keypoints[index];
+      return isValidPoint(indexed) ? indexed : null;
+    }
+
+    function hasUsableHand(hand) {
+      if (!hand || !Array.isArray(hand.keypoints)) return false;
+      const validPoints = hand.keypoints.filter(isValidPoint);
+      if (validPoints.length < 4) return false;
+      const box = getHandBounds(hand);
+      if (!box) return false;
+      return box.width > 18 && box.height > 18;
+    }
+
+    function getHandBounds(hand) {
+      if (!hand || !Array.isArray(hand.keypoints)) return null;
+      const points = hand.keypoints.filter(isValidPoint);
+      if (!points.length) return null;
+      const xs = points.map(p => p.x);
+      const ys = points.map(p => p.y);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+      return {
+        minX, maxX, minY, maxY,
+        width: maxX - minX,
+        height: maxY - minY,
+        centerX: (minX + maxX) / 2,
+        centerY: (minY + maxY) / 2,
+        count: points.length
+      };
+    }
+
+    function getPalmCenter(hand) {
+      const wrist = getKeypoint(hand, "wrist", 0);
+      const indexMcp = getKeypoint(hand, "index_finger_mcp", 5);
+      const pinkyMcp = getKeypoint(hand, "pinky_finger_mcp", 17);
+      const box = getHandBounds(hand);
+      const anchors = [wrist, indexMcp, pinkyMcp].filter(isValidPoint);
+      if (anchors.length >= 2) {
+        const x = anchors.reduce((sum, p) => sum + p.x, 0) / anchors.length;
+        const y = anchors.reduce((sum, p) => sum + p.y, 0) / anchors.length;
+        return { x, y, source: anchors.length === 3 ? "掌心" : "掌心兜底", box };
+      }
+      if (box) return { x: box.centerX, y: box.centerY, source: "包围盒中心", box };
+      return null;
+    }
+
+    function markHandMissing(text = "请把完整手掌放进取景框") {
+      cameraCtx.clearRect(0, 0, cameraCanvas.width, cameraCanvas.height);
+      setCameraState("hand-off", "未检测到手掌", text);
+      if (!heldItem) inputModeEl.textContent = "未检测到手掌；请抬手进入右侧取景框，或用鼠标备用输入。";
+      if (lastGestureClosed) {
+        lastGestureClosed = false;
+        isFist = false;
+        handCursor.classList.remove("fist");
+        handCursor.textContent = "手掌";
+      }
+      lastRawHand = null;
+      smoothedHand = null;
+      handMotion = 0;
+    }
+
+    function isFingerFolded(hand, tipName, pipName, tipIndex, pipIndex) {
+      const tip = getKeypoint(hand, tipName, tipIndex);
+      const pip = getKeypoint(hand, pipName, pipIndex);
+      if (!tip || !pip) return false;
+      return tip.y > pip.y + 8;
+    }
+
+    function detectFist(hand) {
+      if (!hasUsableHand(hand)) return false;
+      const folded = [
+        isFingerFolded(hand, "index_finger_tip", "index_finger_pip", 8, 6),
+        isFingerFolded(hand, "middle_finger_tip", "middle_finger_pip", 12, 10),
+        isFingerFolded(hand, "ring_finger_tip", "ring_finger_pip", 16, 14),
+        isFingerFolded(hand, "pinky_finger_tip", "pinky_finger_pip", 20, 18)
+      ];
+      return folded.filter(Boolean).length >= 3;
+    }
+
+    const handBones = [
+      [0,1],[1,2],[2,3],[3,4],
+      [0,5],[5,6],[6,7],[7,8],
+      [0,9],[9,10],[10,11],[11,12],
+      [0,13],[13,14],[14,15],[15,16],
+      [0,17],[17,18],[18,19],[19,20],
+      [5,9],[9,13],[13,17]
+    ];
+
+    function drawHand(hand) {
+      const w = cameraCanvas.width;
+      const h = cameraCanvas.height;
+      cameraCtx.clearRect(0, 0, w, h);
+      if (!hand || !Array.isArray(hand.keypoints)) return;
+      const points = hand.keypoints;
+      cameraCtx.lineWidth = 3;
+      cameraCtx.strokeStyle = "rgba(74, 222, 128, 0.95)";
+      handBones.forEach(([a, b]) => {
+        const p1 = points[a];
+        const p2 = points[b];
+        if (!isValidPoint(p1) || !isValidPoint(p2)) return;
+        cameraCtx.beginPath();
+        cameraCtx.moveTo(p1.x, p1.y);
+        cameraCtx.lineTo(p2.x, p2.y);
+        cameraCtx.stroke();
+      });
+      points.filter(isValidPoint).forEach((p, index) => {
+        cameraCtx.beginPath();
+        cameraCtx.arc(p.x, p.y, index === 0 ? 6 : 4.5, 0, Math.PI * 2);
+        cameraCtx.fillStyle = index === 0 ? "rgba(45,116,196,0.96)" : "rgba(255,255,255,0.96)";
+        cameraCtx.fill();
+        cameraCtx.lineWidth = 2;
+        cameraCtx.strokeStyle = "rgba(26, 115, 57, 0.98)";
+        cameraCtx.stroke();
+      });
+    }
+
+    async function trackHandLoop() {
+      if (!cameraActive || !cameraVideo.videoWidth) {
+        requestAnimationFrame(trackHandLoop);
+        return;
+      }
+      cameraCanvas.width = cameraVideo.videoWidth;
+      cameraCanvas.height = cameraVideo.videoHeight;
+      if (!detector) {
+        requestAnimationFrame(trackHandLoop);
+        return;
+      }
+      try {
+        await mpHands.send({ image: cameraVideo });
+        const hand = latestMpHand;
+        drawHand(hand);
+        if (hand && hasUsableHand(hand)) {
+          lastHandSeenAt = performance.now();
+          const palm = getPalmCenter(hand);
+          if (!palm || !isValidPoint(palm)) {
+            markHandMissing("手掌中心无效，请调整手掌位置");
+            requestAnimationFrame(trackHandLoop);
+            return;
+          }
+          const palmX = palm.x;
+          const palmY = palm.y;
+          const vw = cameraVideo.videoWidth;
+          const vh = cameraVideo.videoHeight;
+          const mapped = {
+            x: (palmX / vw) * window.innerWidth,
+            y: (palmY / vh) * window.innerHeight
+          };
+          if (!isValidPoint(mapped)) {
+            markHandMissing("手掌关键点无效，请调整手掌位置");
+            requestAnimationFrame(trackHandLoop);
+            return;
+          }
+          if (!smoothedHand) smoothedHand = mapped;
+          if (lastRawHand) {
+            handMotion = Math.hypot(mapped.x - lastRawHand.x, mapped.y - lastRawHand.y);
+          }
+          lastRawHand = { ...mapped };
+          smoothedHand.x = smoothedHand.x * 0.72 + mapped.x * 0.28;
+          smoothedHand.y = smoothedHand.y * 0.72 + mapped.y * 0.28;
+          updatePointer({ clientX: smoothedHand.x, clientY: smoothedHand.y }, "camera");
+
+          const fistNow = detectFist(hand);
+          if (fistNow && !lastGestureClosed) {
+            isFist = true;
+            handCursor.classList.add("fist");
+            handCursor.textContent = "握拳";
+            if (hoveredItem) {
+              grabItem();
+            } else {
+              setStatus("检测到握拳，但当前没有指向物品。先把手掌移到左侧物品上。", "bad");
+              showToast("握拳已识别，但没有选中物品");
+            }
+          } else if (!fistNow && lastGestureClosed) {
+            isFist = false;
+            handCursor.classList.remove("fist");
+            handCursor.textContent = "手掌";
+            releaseItem();
+          }
+          lastGestureClosed = fistNow;
+          const px = Math.round(smoothedHand.x);
+          const py = Math.round(smoothedHand.y);
+          const targetName = heldItem ? heldItem.name : (hoveredItem ? hoveredItem.name : "无物品");
+          const boxInfo = palm.box ? " ｜ 点" + palm.box.count + " 宽" + Math.round(palm.box.width) + " 高" + Math.round(palm.box.height) : "";
+          setCameraState(
+            fistNow ? "fist-on" : "hand-on",
+            fistNow ? "检测到握拳" : "检测到手掌",
+            palm.source + " ｜ 光标 " + px + ", " + py + " ｜ 运动 " + Math.round(handMotion) + boxInfo + " ｜ 当前目标：" + targetName
+          );
+        } else {
+          if (performance.now() - latestMpSeenAt > 250) {
+            markHandMissing(hand ? "手掌关键点太少，请把手掌放大一点" : "请把完整手掌放进取景框");
+          }
+        }
+      } catch (err) {
+        setCameraState("hand-off", "识别暂停", "MediaPipe 识别暂时中断");
+      }
+      requestAnimationFrame(trackHandLoop);
+    }
+
+    initItems();
+    updateHud();
+    startCameraInput();
+    window.addEventListener("resize", updateHighlights);
+  </script>
+</body>
+</html>
